@@ -39,6 +39,7 @@ export function Palette({
         ["Tables", "tables"],
         ["SQL Editor", "sql"],
         ["Branches", "branches"],
+        ["Monitoring", "monitoring"],
         ["Backup & Restore", "backups"],
         ["Roles", "roles"],
       ] as const) {

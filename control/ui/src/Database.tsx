@@ -18,10 +18,11 @@ import {
   TextField,
 } from "./components";
 import { NavGroup, NavLink, PageHead } from "./Shell";
-import { DataGrid, type EditPlan, type Filter, FilterBar, SelectionBar, whereClause } from "./Grid";
+import { DataGrid, type EditPlan, type Filter, FilterBar, SelectionBar, SortMenu, whereClause } from "./Grid";
 import { CreateDialogs, CreateMenu, type Kind } from "./Create";
+import { Monitoring } from "./Monitoring";
 
-export type Section = "overview" | "branches" | "tables" | "sql" | "backups" | "roles";
+export type Section = "overview" | "branches" | "monitoring" | "tables" | "sql" | "backups" | "roles";
 const PAGE = 50;
 
 // ---------------------------------------------------------------- sidebar
@@ -62,6 +63,7 @@ export function DatabaseSidebar({
       <NavGroup>
         <NavLink label="Overview" active={section === "overview"} onClick={() => onSection("overview")} />
         <NavLink label="Branches" active={section === "branches"} onClick={() => onSection("branches")} />
+        <NavLink label="Monitoring" active={section === "monitoring"} onClick={() => onSection("monitoring")} />
       </NavGroup>
 
       <NavGroup title="Postgres database">
@@ -88,6 +90,7 @@ export function DatabaseView({
   onBack: () => void;
 }) {
   if (section === "tables") return <TablesConsole db={db} />;
+  if (section === "monitoring") return <Monitoring db={db} />;
   if (section === "sql") return <SqlEditor db={db} />;
   return (
     <div className="mx-auto max-w-[1100px] px-8 py-7">
@@ -154,8 +157,11 @@ function Overview({ db }: { db: Database }) {
 function Branches({ db, reload, onOpen }: { db: Database; reload: () => void; onOpen: () => void }) {
   const [all, setAll] = useState<Database[]>([]);
   const [error, setError] = useState("");
+  const [branching, setBranching] = useState(false);
+  const [earliest, setEarliest] = useState<string | null>(null);
   useEffect(() => {
     api.databases().then(setAll).catch((e) => setError(e.message));
+    api.restorePoints(db.id).then((r) => setEarliest(r.earliest)).catch(() => setEarliest(null));
   }, [db.id]);
 
   const children = all.filter((d) => d.parent_id === db.id);
@@ -167,20 +173,7 @@ function Branches({ db, reload, onOpen }: { db: Database; reload: () => void; on
         title="Branches"
         subtitle="A branch is a full copy taken at a moment in time, with its own storage and its own connection string."
         actions={
-          <Button
-            variant="accent"
-            onClick={async () => {
-              const name = prompt("Branch name");
-              if (!name) return;
-              try {
-                await api.branch(db.id, name);
-                reload();
-                onOpen();
-              } catch (e) {
-                setError(e instanceof ApiError ? e.message : String(e));
-              }
-            }}
-          >
+          <Button variant="accent" onClick={() => setBranching(true)}>
             Create branch
           </Button>
         }
@@ -205,7 +198,104 @@ function Branches({ db, reload, onOpen }: { db: Database; reload: () => void; on
           </tbody>
         </table>
       </Card>
+
+      <BranchDialog
+        open={branching}
+        onClose={() => setBranching(false)}
+        db={db}
+        earliest={earliest}
+        onCreated={() => {
+          setBranching(false);
+          reload();
+          onOpen();
+        }}
+      />
     </>
+  );
+}
+
+/** Branch from now, or from any moment still inside the restore window. */
+function BranchDialog({
+  open,
+  onClose,
+  db,
+  earliest,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  db: Database;
+  earliest: string | null;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [from, setFrom] = useState<"now" | "time">("now");
+  const [when, setWhen] = useState(() => new Date(Date.now() - 60_000).toISOString().slice(0, 16));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const tooEarly = from === "time" && earliest !== null && Date.parse(when) < Date.parse(earliest);
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Branch ${db.name}`}>
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError("");
+          try {
+            await api.branch(db.id, name, from === "time" ? new Date(when).toISOString() : undefined);
+            onCreated();
+            setName("");
+          } catch (err) {
+            setError(err instanceof ApiError ? err.message : String(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <TextField label="Branch name" value={name} onChange={setName} placeholder="staging" autoFocus mono />
+        <div className="mb-1.5 text-[12px] text-dim">Branch from</div>
+        <div className="mb-3 flex overflow-hidden rounded-md border border-line">
+          {([["now", "Now"], ["time", "A moment in time"]] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setFrom(v)}
+              className={cx("flex-1 px-3 py-1.5 text-[13px]", from === v ? "bg-raise text-text" : "text-dim hover:bg-raise/60")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {from === "time" && (
+          <>
+            <input
+              type="datetime-local"
+              value={when}
+              onChange={(e) => setWhen(e.target.value)}
+              className="mb-2 w-full rounded-md border border-line bg-base px-2.5 py-2 font-mono text-[13px] text-text focus:border-edge focus:outline-none"
+            />
+            <p className={cx("mb-2 text-xs", tooEarly ? "text-rose" : "text-faint")}>
+              {earliest
+                ? `Earliest point held in R2: ${new Date(earliest).toLocaleString()}`
+                : "No snapshots yet, so only branching from now will work."}
+            </p>
+          </>
+        )}
+        <p className="mb-3 text-xs text-faint">
+          A branch is a whole copy restored from R2, with its own storage and connection string. It does not share pages
+          with its parent.
+        </p>
+        <div className="flex gap-2">
+          <Button type="submit" variant="accent" disabled={busy || !name || tooEarly}>
+            {busy ? "Creating…" : "Create branch"}
+          </Button>
+          <Button onClick={onClose}>Cancel</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -555,14 +645,18 @@ function TablesConsole({ db }: { db: Database }) {
                   loadRows(table, 0, sort, f);
                 }}
               />
+              <SortMenu
+                columns={rows?.columns ?? []}
+                sort={sort}
+                onChange={(next) => {
+                  setSort(next);
+                  setPage(0);
+                  loadRows(table, 0, next, filters);
+                }}
+              />
               <Button size="sm" onClick={() => loadRows(table, page, sort, filters)} title="Refresh">
                 ↻
               </Button>
-              {sort && (
-                <Badge>
-                  sorted by {sort.col} {sort.dir}
-                </Badge>
-              )}
               {whyReadOnly ? (
                 <span className="text-[11px] text-faint" title={whyReadOnly}>
                   read only

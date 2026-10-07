@@ -32,6 +32,24 @@ export type QueryResult = {
   ms: number;
 };
 
+/** One stored sample. Counters are cumulative, exactly as Postgres reports them. */
+export type MetricSample = {
+  at: string;
+  running: number;
+  connections: number;
+  memory_bytes: number | null;
+  cpu_usec: number | null;
+  tup_inserted: number | null;
+  tup_updated: number | null;
+  tup_deleted: number | null;
+  tup_fetched: number | null;
+  deadlocks: number | null;
+  blks_hit: number | null;
+  blks_read: number | null;
+  xact_commit: number | null;
+  xact_rollback: number | null;
+};
+
 export type Box = {
   id: string;
   name: string;
@@ -86,11 +104,15 @@ export const api = {
   createDatabase: (name: string) =>
     post<{ database: Database; password: string; connection_uri: string }>("/databases", { name }),
   deleteDatabase: (id: string) => call<{ deleted: string }>(`/databases/${id}`, { method: "DELETE" }),
-  branch: (id: string, name: string) => post<{ database: Database }>(`/databases/${id}/branches`, { name }),
+  branch: (id: string, name: string, point_in_time?: string) =>
+    post<{ database: Database }>(`/databases/${id}/branches`, { name, point_in_time }),
   resetPassword: (id: string) => post<{ password: string; connection_uri: string }>(`/databases/${id}/reset-password`),
   restorePoints: (id: string) =>
     call<{ earliest: string | null; snapshots: { taken_at: string; kind: string }[] }>(`/databases/${id}/restore-points`),
   query: (id: string, sql: string, limit?: number) => post<QueryResult>(`/databases/${id}/query`, { sql, limit }),
+
+  metrics: (id: string, hours: number) =>
+    call<{ hours: number; samples: MetricSample[] }>(`/databases/${id}/metrics?hours=${hours}`),
 
   boxes: () => call<Box[]>("/boxes"),
   adminStats: () => call<AdminStats>("/admin/stats"),

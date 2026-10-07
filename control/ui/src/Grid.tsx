@@ -2,7 +2,7 @@
 // drives the WHERE clause. Kept apart from the page layout because all four of
 // those things talk to each other.
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
-import { FunnelIcon, TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { ArrowsUpDownIcon, FunnelIcon, TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, ident, literal, type QueryResult } from "./api";
 import { Button, cx, Select } from "./components";
@@ -415,5 +415,76 @@ export function SelectionBar({
         Clear
       </button>
     </div>
+  );
+}
+
+
+// ---------------------------------------------------------------- sort
+
+export type Sort = { col: string; dir: "asc" | "desc" } | null;
+
+/** Clicking a heading still sorts; this is for picking a column you cannot
+ *  see without scrolling the grid sideways. */
+export function SortMenu({
+  columns,
+  sort,
+  onChange,
+}: {
+  columns: string[];
+  sort: Sort;
+  onChange: (s: Sort) => void;
+}) {
+  return (
+    <Popover className="relative">
+      <PopoverButton as={Button} size="sm" className={cx(sort && "border-neon/40 text-neon")}>
+        <ArrowsUpDownIcon className="size-3.5" />
+        {sort ? `Sorted by ${sort.col}` : "Sort"}
+      </PopoverButton>
+      <PopoverPanel
+        anchor="bottom start"
+        className="z-50 mt-1 w-72 rounded-lg border border-line bg-panel p-3 shadow-2xl"
+      >
+        {({ close }) => (
+          <div>
+            <div className="mb-2 text-[11px] uppercase tracking-wide text-faint">Sort by</div>
+            <div className="max-h-56 overflow-y-auto">
+              {columns.map((c) => (
+                <div key={c} className="mb-0.5 flex items-center gap-1">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-dim">{c}</span>
+                  {(["asc", "desc"] as const).map((dir) => (
+                    <button
+                      key={dir}
+                      onClick={() => {
+                        onChange({ col: c, dir });
+                        close();
+                      }}
+                      className={cx(
+                        "rounded border px-1.5 py-0.5 text-[11px]",
+                        sort?.col === c && sort.dir === dir
+                          ? "border-neon/40 bg-neon/10 text-neon"
+                          : "border-line text-dim hover:bg-raise hover:text-text",
+                      )}
+                    >
+                      {dir === "asc" ? "A→Z" : "Z→A"}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+            {sort && (
+              <button
+                onClick={() => {
+                  onChange(null);
+                  close();
+                }}
+                className="mt-2 text-[12px] text-faint hover:text-text"
+              >
+                clear sort
+              </button>
+            )}
+          </div>
+        )}
+      </PopoverPanel>
+    </Popover>
   );
 }

@@ -1,0 +1,7 @@
+target/
+/data/
+*.env
+!deploy/*.env.example
+node_modules/
+.wrangler/
+.dev.vars

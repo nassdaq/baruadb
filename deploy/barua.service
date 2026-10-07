@@ -1,0 +1,26 @@
+[Unit]
+Description=BaruaDB agent (Postgres proxy + database manager)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=barua
+Group=barua
+EnvironmentFile=/etc/barua/barua.env
+ExecStart=/usr/local/bin/barua serve
+Restart=always
+RestartSec=3
+
+# The agent owns its cgroup subtree: it runs in ".../barua.service/agent" and
+# puts each database in ".../barua.service/dbs/<id>" with memory/CPU limits.
+Delegate=yes
+DelegateSubgroup=agent
+
+# Restarting the agent (upgrades, cert renewal) must not kill the databases.
+KillMode=process
+
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

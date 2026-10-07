@@ -20,6 +20,7 @@ A database sleeps after 5 idle minutes and wakes on the next connection
 (~0.1 s from disk). When disk runs low, sleeping databases are pushed to R2
 entirely and restored on their next connection, so a small disk can serve far
 more data than it holds. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Picking this project up? Start with [HANDOVER.md](HANDOVER.md).
 
 ## Layout
 

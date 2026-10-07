@@ -14,9 +14,9 @@
 #   CF_DNS_API_TOKEN            Cloudflare token with Zone.DNS edit on barua.tz
 #                               (used only by certbot for the wildcard certificate)
 # Optional:
-#   BARUA_CONTROL_URL           default https://api.barua.tz
+#   BARUA_CONTROL_URL           default https://pgapi.barua.tz
 #   BARUA_R2_BUCKET             default barua
-#   BARUA_DOMAIN                default db.barua.tz
+#   BARUA_DOMAIN                default pg.barua.tz
 #   BARUA_BOX_NAME              default: the hostname
 #   BARUA_BINARY_URL            prebuilt barua binary; otherwise built from source
 #   BARUA_GIT_REF               branch/tag to build from (default barua-db)
@@ -31,9 +31,9 @@ need BARUA_R2_SECRET_ACCESS_KEY
 need CF_DNS_API_TOKEN
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 
-CONTROL_URL=${BARUA_CONTROL_URL:-https://api.barua.tz}
-DOMAIN=${BARUA_DOMAIN:-db.barua.tz}
-BUCKET=${BARUA_R2_BUCKET:-barua}
+CONTROL_URL=${BARUA_CONTROL_URL:-https://pgapi.barua.tz}
+DOMAIN=${BARUA_DOMAIN:-pg.barua.tz}
+BUCKET=${BARUA_R2_BUCKET:-baruadb}
 BOX_NAME=${BARUA_BOX_NAME:-$(hostname -s)}
 GIT_REF=${BARUA_GIT_REF:-barua-db}
 PUBLIC_IP=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')

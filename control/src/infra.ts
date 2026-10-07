@@ -68,7 +68,7 @@ async function cf(env: Env, method: string, path: string, payload?: unknown): Pr
 
 /**
  * Point `<label>.<DB_DOMAIN>` at an IP. Without CF_API_TOKEN this is a no-op
- * and the wildcard `*.db.barua.tz` record (pointing at the single box) is used.
+ * and the wildcard `*.pg.barua.tz` record (pointing at the single box) is used.
  * Returns the record id, or null.
  */
 export async function upsertDns(env: Env, label: string, ip: string, recordId: string | null): Promise<string | null> {

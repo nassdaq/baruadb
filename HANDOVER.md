@@ -16,8 +16,13 @@ proven, what isn't, and how to work on it without breaking it.
   - **Small Linode boxes:** compute.
 - Product feel must be Neon-like: a database URL per database, scale to zero,
   branching, point-in-time restore.
-- Domain: databases are at `<id>.db.barua.tz`, the control plane API at
-  `api.barua.tz`.
+- Domain: databases are at `<id>.pg.barua.tz`, the control plane API at
+  `pgapi.barua.tz`.
+  - `pg.`/`pgapi.` rather than `db.`/`api.` because **barua.tz also serves the
+    owner's Barua *mail* product**: a wildcard `A *.barua.tz → 172.233.46.254`
+    sends every other name to the mail box, and `api.barua.tz`, `db.barua.tz`,
+    `ui.`, `developer.`, `storage.` are live there. For the same reason the R2
+    bucket is **`baruadb`** — `barua` holds mail attachments.
 - "Barua" is Swahili for letter/mail. The name has no technical meaning.
 
 ## 2. Decisions already made — do not reopen without the owner
@@ -141,7 +146,7 @@ docs/             ARCHITECTURE.md
 
 ### Known gaps / rough edges
 
-- **No connection pooler.** `<id>-pooler.db.barua.tz` routes directly.
+- **No connection pooler.** `<id>-pooler.pg.barua.tz` routes directly.
 - Branch-from-now when the parent is **asleep** uses target `latest`. Fine,
   but it replays the parent's whole archive after its newest snapshot.
 - Restores fetch WAL one segment per process spawn (`wal-fetch`). Slow for
@@ -198,13 +203,13 @@ docs/             ARCHITECTURE.md
   Self-signed wildcard certificate:
   ```bash
   openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem \
-    -days 2 -subj "/CN=*.db.barua.tz" -addext "subjectAltName=DNS:*.db.barua.tz"
+    -days 2 -subj "/CN=*.pg.barua.tz" -addext "subjectAltName=DNS:*.pg.barua.tz"
   ```
   Connect with SNI but no DNS:
   ```bash
-  psql "host=<id>.db.barua.tz hostaddr=127.0.0.1 port=15432 user=app dbname=app sslmode=require"
+  psql "host=<id>.pg.barua.tz hostaddr=127.0.0.1 port=15432 user=app dbname=app sslmode=require"
   ```
-- Agent API: `curl -k --noproxy '*' --resolve box.db.barua.tz:18443:127.0.0.1 https://box.db.barua.tz:18443/v1/...`
+- Agent API: `curl -k --noproxy '*' --resolve box.pg.barua.tz:18443:127.0.0.1 https://box.pg.barua.tz:18443/v1/...`
   - **Sandboxes with an HTTPS proxy:** always pass `--noproxy '*'` / set
     `NO_PROXY='*'`, or local calls hang or get reset.
 - **Control plane locally:**

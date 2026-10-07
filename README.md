@@ -10,9 +10,9 @@ branching and point-in-time restore, built from a few cheap parts:
 | **Linux boxes** (e.g. Linode) | Run Postgres only for the databases awake right now |
 
 ```
- Customer app ── postgresql://app:…@br-k3j9x2m1qa.db.barua.tz/app ──► box :5432
+ Customer app ── postgresql://app:…@br-k3j9x2m1qa.pg.barua.tz/app ──► box :5432
                                                                      (proxy wakes the DB)
- Dashboard / CLI ── https://api.barua.tz ──► Worker + D1 ──HTTPS──► box agents
+ Dashboard / CLI ── https://pgapi.barua.tz ──► Worker + D1 ──HTTPS──► box agents
  Boxes ── snapshots + WAL every ≤10 s ──► R2
 ```
 
@@ -37,7 +37,7 @@ docs/      architecture and design decisions
 
 ```bash
 # R2 bucket + an R2 API token (Object Read & Write on this bucket)
-npx wrangler r2 bucket create barua
+npx wrangler r2 bucket create baruadb
 
 cd control
 npm install
@@ -48,10 +48,10 @@ npx wrangler secret put JOIN_TOKEN    # long random string, lets boxes join
 # Needed from the 2nd box on (each database then gets its own DNS record):
 npx wrangler secret put CF_API_TOKEN  # Zone.DNS edit on barua.tz
 npx wrangler secret put CF_ZONE_ID
-npm run deploy                        # serves https://api.barua.tz
+npm run deploy                        # serves https://pgapi.barua.tz
 ```
 
-DNS for one box: add `A  *.db.barua.tz  → <box IP>` (DNS only, not proxied).
+DNS for one box: add `A  *.pg.barua.tz  → <box IP>` (DNS only, not proxied).
 
 ### 2. Add a box (first one, and every one after)
 
@@ -65,7 +65,7 @@ CF_DNS_API_TOKEN=… \
 bash install.sh
 ```
 
-It installs Postgres 16, gets a wildcard certificate for `*.db.barua.tz`,
+It installs Postgres 16, gets a wildcard certificate for `*.pg.barua.tz`,
 installs the agent as a systemd service, and the box **joins the cluster by
 itself**. New databases are placed on the box with the most free memory.
 If the repository is private, pass `BARUA_BINARY_URL` (the CI build artifact)
@@ -74,15 +74,15 @@ instead of building from source.
 ### 3. Use it
 
 ```bash
-API=https://api.barua.tz
+API=https://pgapi.barua.tz
 # admin: create an API key for a customer
 curl -X POST $API/v1/api-keys -H "Authorization: Bearer $ADMIN_TOKEN" -d '{"name":"juma"}'
 
 # customer: create a database
 curl -X POST $API/v1/databases -H "Authorization: Bearer $KEY" -d '{"name":"shop"}'
-# → { "connection_uri": "postgresql://app:…@br-k3j9x2m1qa.db.barua.tz/app?sslmode=require", … }
+# → { "connection_uri": "postgresql://app:…@br-k3j9x2m1qa.pg.barua.tz/app?sslmode=require", … }
 
-psql "postgresql://app:…@br-k3j9x2m1qa.db.barua.tz/app?sslmode=require"
+psql "postgresql://app:…@br-k3j9x2m1qa.pg.barua.tz/app?sslmode=require"
 ```
 
 ## API

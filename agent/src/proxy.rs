@@ -5,7 +5,7 @@
 //! Authentication (SCRAM) happens end to end between client and Postgres.
 //!
 //! A client picks its database with, in order of preference:
-//! - TLS SNI:          `br-k3j9x2m1qa.db.barua.tz` (libpq ≥ 14 sends it)
+//! - TLS SNI:          `br-k3j9x2m1qa.pg.barua.tz` (libpq ≥ 14 sends it)
 //! - startup options:  `?options=endpoint%3Dbr-k3j9x2m1qa` (Neon-compatible)
 //! - user suffix:      `app--br-k3j9x2m1qa` (for clients that can do neither)
 

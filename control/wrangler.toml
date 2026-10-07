@@ -2,8 +2,8 @@ name = "barua-control"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 
-# The control plane API: https://api.barua.tz
-routes = [{ pattern = "api.barua.tz", custom_domain = true }]
+# The control plane API: https://pgapi.barua.tz
+routes = [{ pattern = "pgapi.barua.tz", custom_domain = true }]
 
 [[d1_databases]]
 binding = "DB"
@@ -14,9 +14,9 @@ database_id = "REPLACE_WITH_D1_DATABASE_ID" # wrangler d1 create barua
 crons = ["*/2 * * * *"] # mark silent boxes offline
 
 [vars]
-DB_DOMAIN = "db.barua.tz"
+DB_DOMAIN = "pg.barua.tz"
 # How the Worker reaches a box's agent API. {box} is the box id.
-AGENT_URL_TEMPLATE = "https://{box}.db.barua.tz"
+AGENT_URL_TEMPLATE = "https://{box}.pg.barua.tz"
 
 # Secrets (wrangler secret put <NAME>):
 #   ADMIN_TOKEN   - full access (create API keys, manage boxes)

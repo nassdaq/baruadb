@@ -13,7 +13,7 @@ the cluster grows by adding boxes.
 
 ```
           ┌──────────────── Cloudflare ────────────────┐
-          │ Worker (api.barua.tz) ── D1: keys, dbs,     │
+          │ Worker (pgapi.barua.tz) ── D1: keys, dbs,     │
           │                              boxes          │
           │ R2: dbs/<id>/snapshots/*  dbs/<id>/wal/*    │
           └──────▲───────────────────────────▲──────────┘
@@ -78,7 +78,7 @@ replay the wrong WAL.
 
 ## Routing and auth
 
-- Hostname `<id>.db.barua.tz`, wildcard certificate per box (Let's Encrypt,
+- Hostname `<id>.pg.barua.tz`, wildcard certificate per box (Let's Encrypt,
   DNS-01 via Cloudflare). The proxy reads SNI to find the database. Fallbacks:
   `options=endpoint=<id>` and user `role--<id>`.
 - Plaintext connections are refused when TLS is configured.
@@ -112,7 +112,7 @@ thousands of sessions as Tokio tasks on two worker threads.
 
 ## Not built yet (next steps)
 
-1. **Pooler** (`<id>-pooler.db.barua.tz`, transaction mode). The hostname is
+1. **Pooler** (`<id>-pooler.pg.barua.tz`, transaction mode). The hostname is
    reserved and currently routes directly.
 2. **Zero-loss WAL** with two small synchronous WAL nodes.
 3. **Automatic failover** (today it is one admin call).

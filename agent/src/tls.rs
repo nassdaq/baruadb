@@ -7,7 +7,7 @@ use tokio_rustls::rustls::ServerConfig;
 use crate::config::Config;
 
 /// TLS for both the proxy and the agent API, from the wildcard certificate
-/// for `*.db.barua.tz`. `alpn` is set for the HTTP API only.
+/// for `*.pg.barua.tz`. `alpn` is set for the HTTP API only.
 pub fn acceptor(cfg: &Config, alpn: &[&[u8]]) -> Result<Option<TlsAcceptor>> {
     let (Some(cert), Some(key)) = (&cfg.tls_cert, &cfg.tls_key) else {
         return Ok(None);

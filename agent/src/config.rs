@@ -24,7 +24,7 @@ pub struct Config {
     pub api_addr: String,
 
     /// DNS zone databases live under: `<id>.<domain>`.
-    #[arg(long, env = "BARUA_DOMAIN", default_value = "db.barua.tz")]
+    #[arg(long, env = "BARUA_DOMAIN", default_value = "pg.barua.tz")]
     pub domain: String,
 
     /// This box's public IPv4 (reported to the control plane on join).
@@ -35,7 +35,7 @@ pub struct Config {
     #[arg(long, env = "BARUA_BOX_NAME")]
     pub box_name: Option<String>,
 
-    /// Control plane URL, e.g. https://api.db.barua.tz. Without it the
+    /// Control plane URL, e.g. https://pgapi.barua.tz. Without it the
     /// agent runs standalone and BARUA_AGENT_TOKEN guards its API.
     #[arg(long, env = "BARUA_CONTROL_URL")]
     pub control_url: Option<String>,

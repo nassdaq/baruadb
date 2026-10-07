@@ -19,6 +19,7 @@ import {
 } from "./components";
 import { NavGroup, NavLink, PageHead } from "./Shell";
 import { DataGrid, type EditPlan, type Filter, FilterBar, SelectionBar, whereClause } from "./Grid";
+import { CreateDialogs, CreateMenu, type Kind } from "./Create";
 
 export type Section = "overview" | "branches" | "tables" | "sql" | "backups" | "roles";
 const PAGE = 50;
@@ -334,6 +335,8 @@ function TablesConsole({ db }: { db: Database }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [creating, setCreating] = useState<Kind | null>(null);
+  const [notice, setNotice] = useState("");
 
   const run = useCallback((sql: string, limit = PAGE) => api.query(db.id, sql, limit), [db.id]);
 
@@ -347,13 +350,30 @@ function TablesConsole({ db }: { db: Database }) {
       .catch((e) => setError(e.message));
   }, [run]);
 
+  const reloadTables = useCallback(
+    () =>
+      run(CATALOG.tables(schema), 500)
+        .then((r) => setTables(r.rows.map((x) => ({ name: x[0]!, kind: x[1]!, rows: x[2]!, size: x[3]! }))))
+        .catch((e) => setError(e.message)),
+    [run, schema],
+  );
+
+  const reloadSchemas = useCallback(
+    () =>
+      run(CATALOG.schemas, 200)
+        .then((r) => {
+          const names = r.rows.map((x) => x[0]!);
+          if (names.length) setSchemas(names);
+        })
+        .catch(() => {}),
+    [run],
+  );
+
   useEffect(() => {
     setTable(null);
     setRows(null);
-    run(CATALOG.tables(schema), 500)
-      .then((r) => setTables(r.rows.map((x) => ({ name: x[0]!, kind: x[1]!, rows: x[2]!, size: x[3]! }))))
-      .catch((e) => setError(e.message));
-  }, [schema, run]);
+    reloadTables();
+  }, [schema, reloadTables]);
 
   const loadRows = useCallback(
     async (name: string, p: number, s: typeof sort, f: Filter[] = []) => {
@@ -465,8 +485,21 @@ function TablesConsole({ db }: { db: Database }) {
         </div>
         <div className="space-y-2 border-b border-line p-3">
           <Select value={schema} onChange={setSchema} options={schemas} />
-          <SearchBox value={filter} onChange={setFilter} placeholder="Search…" />
+          <div className="flex items-center gap-1.5">
+            <SearchBox value={filter} onChange={setFilter} placeholder="Search…" className="min-w-0 flex-1" />
+            <button
+              onClick={() => reloadTables()}
+              title="Refresh"
+              className="shrink-0 rounded-md border border-line bg-panel p-1.5 text-dim hover:bg-raise hover:text-text"
+            >
+              ↻
+            </button>
+            <CreateMenu onPick={setCreating} />
+          </div>
         </div>
+        {notice && (
+          <div className="border-b border-neon/20 bg-neon/5 px-3 py-2 text-[12px] text-neon">{notice}</div>
+        )}
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {visible.length === 0 ? (
             <div className="px-2 py-6 text-center text-xs text-faint">No tables</div>
@@ -605,6 +638,21 @@ function TablesConsole({ db }: { db: Database }) {
           </>
         )}
       </div>
+
+      <CreateDialogs
+        kind={creating}
+        schema={schema}
+        schemas={schemas}
+        tables={tables.map((t) => t.name)}
+        onClose={() => setCreating(null)}
+        run={run}
+        onDone={async (message, newTable) => {
+          setNotice(message);
+          setTimeout(() => setNotice(""), 4000);
+          await Promise.all([reloadSchemas(), reloadTables()]);
+          if (newTable) open(newTable);
+        }}
+      />
 
       {table && columns && (
         <AddRecord

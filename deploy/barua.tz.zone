@@ -1,21 +1,35 @@
-; barua.tz — exact copy of the live Route 53 zone, for import into Cloudflare.
-; Captured 2026-10-07 by DNS audit (AXFR refused; wildcard masks per-name A
-; records, so names other than those below are served by *.barua.tz).
-; IMPORTANT: every record here must be DNS-only (grey cloud) after import.
-; Proxying the apex or the wildcard breaks SMTP 25/587, IMAP and Postgres 5432.
-$TTL 300
-barua.tz.           300 IN A     172.233.46.254   ; Barua mail box (nginx: barua.tz, www, developer, ui)
-*.barua.tz.         300 IN A     172.233.46.254   ; catch-all -> mail box
-storage.barua.tz.   300 IN A     172.233.46.67    ; barua-garage (S3/Garage)
-www.barua.tz.       300 IN CNAME barua.tz.
-bounce.barua.tz.    300 IN CNAME return.smtp2go.net.
-barua.tz.           300 IN MX    10 mx.tznova.com.
-barua.tz.           300 IN TXT   "v=spf1 include:spf.smtp2go.com a:mx.tznova.com ~all"
-_dmarc.barua.tz.    300 IN TXT   "v=DMARC1; p=quarantine; pct=100; rua=mailto:kelvin@barua.tz; adkim=r; aspf=r"
-; No DKIM selectors exist today (smtp2go mail passes DMARC on SPF alignment,
-; aspf=r). If DKIM is added later, add the selector here too.
+; barua.tz — authoritative export of the Route 53 zone (Z056517927RCLSWZ09U7K,
+; AWS account 878021513059), captured 2026-10-07 via list-resource-record-sets.
 ;
-; --- Added for BaruaDB (not in the Route 53 zone) ---
-; pgapi.barua.tz      -> created by `wrangler deploy` as a Worker custom domain
-; *.pg.barua.tz   A   -> <box IP>, DNS-only (fallback; the Worker also writes
-;                        one A record per database and per box)
+; An earlier version of this file was built by probing DNS and was WRONG: a
+; wildcard A masks per-name records, so `dig` cannot enumerate a zone. It missed
+; both DKIM records. Flipping nameservers on that list would have left signed
+; mail with no published key, and _dmarc says p=quarantine. Always export from
+; the provider's API, never from dig.
+;
+; Every record must be imported DNS-only (grey cloud). Proxying the apex or the
+; wildcard would break SMTP 25/587, IMAP and Postgres 5432.
+$TTL 300
+barua.tz.                        300 IN A     172.233.46.254   ; mail box (barua.tz, www, ui, developer)
+*.barua.tz.                      300 IN A     172.233.46.254   ; catch-all -> mail box
+developer.barua.tz.              300 IN A     172.233.46.254   ; explicit; was hidden behind the wildcard
+storage.barua.tz.                300 IN A     172.233.46.67    ; barua-garage
+www.barua.tz.                    300 IN CNAME barua.tz.
+bounce.barua.tz.                 300 IN CNAME return.smtp2go.net.
+s866777._domainkey.barua.tz.     300 IN CNAME dkim.smtp2go.net.  ; smtp2go DKIM
+barua.tz.                        300 IN MX    10 mx.tznova.com.
+barua.tz.                        300 IN TXT   "v=spf1 include:spf.smtp2go.com a:mx.tznova.com ~all"
+_spf.barua.tz.                   300 IN TXT   "v=spf1 a:mx.tznova.com include:spf.smtp2go.com include:amazonses.com -all"
+_dmarc.barua.tz.                 300 IN TXT   "v=DMARC1; p=quarantine; pct=100; rua=mailto:kelvin@barua.tz; adkim=r; aspf=r"
+_barua-verify.barua.tz.          300 IN TXT   "barua-verify=YhA65Jy73uYeenTcq5NpeKU-FUZbSVIw"
+barua._domainkey.barua.tz.       300 IN TXT   "v=DKIM1; h=sha256; k=rsa; p=…"   ; full key in Route 53 / Cloudflare
+;
+; All 13 records above are live in the Cloudflare zone 0e0c828b4fa09f56f9e2fa7ed67ca527
+; and were verified identical against ns-596.awsdns-10.net on 2026-10-07.
+;
+; --- BaruaDB's own records ---
+; *.pg.barua.tz   A  -> box IP, DNS-only (one box; from the 2nd box the Worker
+;                       writes a record per database and per box instead)
+; pgapi.barua.tz     -> Worker custom domain, only once barua.tz is active on
+;                       Cloudflare; until then the control plane answers on
+;                       barua-control.kelvineffect.workers.dev

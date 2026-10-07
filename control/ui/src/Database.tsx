@@ -395,8 +395,12 @@ function TablesConsole({ db }: { db: Database }) {
           pk,
           readOnly: new Set(meta.filter((c) => c[5] === "t").map((c) => c[0]!)),
           nullable: new Set(meta.filter((c) => c[2] !== "t").map((c) => c[0]!)),
-          save: async (row, column, value) => {
-            const at = (name: string) => rows!.columns.indexOf(name);
+          // One statement, one row back. The grid patches that row in place
+          // instead of re-reading the page: editing a cell should not cost a
+          // second query, nor pull 50 rows over the wire to change one value.
+          save: async (index, row, column, value) => {
+            const cols = rows!.columns;
+            const at = (name: string) => cols.indexOf(name);
             const where = pk
               .map((k) => {
                 const v = row[at(k)];
@@ -405,12 +409,18 @@ function TablesConsole({ db }: { db: Database }) {
               })
               .join(" and ");
             const set = value === null ? "null" : literal(value);
+            // RETURNING lists the same columns in the same order as the grid,
+            // so triggers and computed columns show up without another read.
             const r = await run(
-              `update ${ident(schema)}.${ident(table)} set ${ident(column)} = ${set} where ${where}`,
+              `update ${ident(schema)}.${ident(table)} set ${ident(column)} = ${set} where ${where}
+               returning ${cols.map(ident).join(", ")}`,
               1,
             );
-            if (r.rows_affected === 0) throw new Error("no row matched; it may have been deleted");
-            await loadRows(table, page, sort, filters);
+            const updated = r.rows[0];
+            if (!updated) throw new Error("no row matched; it may have been deleted");
+            setRows((prev) =>
+              prev ? { ...prev, rows: prev.rows.map((x, i) => (i === index ? updated : x)) } : prev,
+            );
           },
         }
       : null;
@@ -425,7 +435,8 @@ function TablesConsole({ db }: { db: Database }) {
     if (!confirm(`Delete ${chosen.length} ${chosen.length === 1 ? "row" : "rows"}? This cannot be undone.`)) return;
     try {
       await run(`delete from ${ident(schema)}.${ident(table)} where ${where}`, 1);
-      await loadRows(table, page, sort, filters);
+      setRows((prev) => (prev ? { ...prev, rows: prev.rows.filter((_, i) => !selection.has(i)) } : prev));
+      setSelection(new Set());
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     }
@@ -601,13 +612,18 @@ function TablesConsole({ db }: { db: Database }) {
           onClose={() => setAdding(false)}
           columns={columns}
           onInsert={async (cols, values) => {
-            await run(
+            const shown = rows?.columns ?? [];
+            const r = await run(
               `insert into ${ident(schema)}.${ident(table)} (${cols.map(ident).join(", ")})
-               values (${values.map((v) => (v === "" ? "default" : literal(v))).join(", ")})`,
+               values (${values.map((v) => (v === "" ? "default" : literal(v))).join(", ")})
+               returning ${shown.length ? shown.map(ident).join(", ") : "*"}`,
               1,
             );
             setAdding(false);
-            loadRows(table, page, sort, filters);
+            // Append what the database stored, defaults and triggers included.
+            const created = r.rows[0];
+            if (created) setRows((prev) => (prev ? { ...prev, rows: [...prev.rows, created] } : prev));
+            else loadRows(table, page, sort, filters);
           }}
         />
       )}

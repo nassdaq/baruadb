@@ -153,7 +153,8 @@ export type EditPlan = {
   pk: string[];
   readOnly: Set<string>;
   nullable: Set<string>;
-  save: (row: (string | null)[], column: string, value: string | null) => Promise<void>;
+  /** index is the row position on screen, so the grid can patch just that row. */
+  save: (index: number, row: (string | null)[], column: string, value: string | null) => Promise<void>;
 };
 
 export function DataGrid({
@@ -280,7 +281,7 @@ export function DataGrid({
                         onSave={async (value) => {
                           setError("");
                           try {
-                            await edit!.save(row, col, value);
+                            await edit!.save(i, row, col, value);
                             setEditing(null);
                           } catch (e) {
                             setError(e instanceof ApiError ? e.message : String((e as Error).message ?? e));

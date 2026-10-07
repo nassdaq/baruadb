@@ -157,14 +157,19 @@ function signIn(err) {
   app.innerHTML = \`
     <div class="signin">
       <h1>BaruaDB</h1>
-      <p>Paste an API key to see your databases, or the admin token to see boxes too.</p>
+      <p>Paste a customer key (<code>bk_…</code>) to see your databases, or the admin token (64 hex characters) to see boxes too.</p>
       \${err ? '<div class="err">' + esc(err) + "</div>" : ""}
       <input id="k" placeholder="bk_… or the admin token" autofocus>
       <button class="btn primary" id="go" style="width:100%;justify-content:center">Continue</button>
     </div>\`;
   const go = async () => {
-    KEY = $("#k").value.trim();
+    // Be forgiving about what gets pasted: quotes from a .env line, a
+    // copied "Bearer " prefix, stray whitespace.
+    KEY = $("#k").value.trim().replace(/^Bearer\\s+/i, "").replace(/^["']|["']$/g, "").trim();
     if (!KEY) return;
+    if (/^cfat_/.test(KEY) || /^ghp_/.test(KEY)) {
+      return signIn("That is a Cloudflare/GitHub token, not a BaruaDB key. Use ADMIN_TOKEN (64 hex characters) or a customer key starting with bk_.");
+    }
     try {
       await api("/databases");
       try { await api("/boxes"); ADMIN = true; } catch { ADMIN = false; }

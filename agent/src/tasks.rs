@@ -132,6 +132,28 @@ struct DbBeat {
     location: Location,
     running: bool,
     connections: usize,
+    /// Resource use, when the database is up and cgroups are available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    memory_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cpu_usec: Option<u64>,
+    /// Postgres' own counters, cumulative since the cluster started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pg: Option<PgCounters>,
+}
+
+/// Straight from pg_stat_database. All cumulative; rates are the reader's job.
+#[derive(Serialize, Default)]
+struct PgCounters {
+    tup_inserted: i64,
+    tup_updated: i64,
+    tup_deleted: i64,
+    tup_fetched: i64,
+    deadlocks: i64,
+    blks_hit: i64,
+    blks_read: i64,
+    xact_commit: i64,
+    xact_rollback: i64,
 }
 
 #[derive(Serialize)]
@@ -193,8 +215,32 @@ async fn join(app: &App, url: &str) -> Result<Identity> {
     })
 }
 
+async fn pg_counters(app: &App, id: &str) -> Result<PgCounters> {
+    let db = app.db(id)?;
+    let client = app.admin_client(&db, &db.database).await?;
+    let row = client
+        .query_one(
+            "SELECT tup_inserted, tup_updated, tup_deleted, tup_fetched, deadlocks,
+                    blks_hit, blks_read, xact_commit, xact_rollback
+               FROM pg_stat_database WHERE datname = current_database()",
+            &[],
+        )
+        .await?;
+    Ok(PgCounters {
+        tup_inserted: row.get(0),
+        tup_updated: row.get(1),
+        tup_deleted: row.get(2),
+        tup_fetched: row.get(3),
+        deadlocks: row.get(4),
+        blks_hit: row.get(5),
+        blks_read: row.get(6),
+        xact_commit: row.get(7),
+        xact_rollback: row.get(8),
+    })
+}
+
 async fn heartbeat(app: &App, url: &str, id: &Identity) -> Result<()> {
-    let databases = app.meta(|m| {
+    let mut databases: Vec<DbBeat> = app.meta(|m| {
         m.databases
             .values()
             .map(|d| {
@@ -205,10 +251,22 @@ async fn heartbeat(app: &App, url: &str, id: &Identity) -> Result<()> {
                     location: d.location,
                     running: rt.is_running(),
                     connections: rt.connections(),
+                    memory_bytes: app.cgroups.memory_current(&d.id),
+                    cpu_usec: app.cgroups.cpu_usec(&d.id),
+                    pg: None,
                 }
             })
             .collect()
     });
+
+    // Ask the running databases for their own counters. One cheap query over
+    // the local socket; a sleeping database is left alone so that reading a
+    // graph never wakes anything.
+    for beat in databases.iter_mut().filter(|b| b.running) {
+        if let Ok(counters) = pg_counters(app, &beat.id).await {
+            beat.pg = Some(counters);
+        }
+    }
     let resp = http()
         .post(format!("{url}/v1/boxes/{}/heartbeat", id.box_id))
         .bearer_auth(&id.agent_token)

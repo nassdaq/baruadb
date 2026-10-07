@@ -93,6 +93,16 @@ impl Cgroups {
     }
 
     /// Current memory use of a database in bytes, if known.
+    /// Total CPU time the database has used, in microseconds. Monotonic, so
+    /// the control plane turns consecutive samples into a rate.
+    pub fn cpu_usec(&self, id: &str) -> Option<u64> {
+        let root = self.root.as_ref()?;
+        let text = std::fs::read_to_string(root.join(id).join("cpu.stat")).ok()?;
+        text.lines()
+            .find_map(|l| l.strip_prefix("usage_usec "))
+            .and_then(|v| v.trim().parse().ok())
+    }
+
     pub fn memory_current(&self, id: &str) -> Option<u64> {
         let root = self.root.as_ref()?;
         std::fs::read_to_string(root.join(id).join("memory.current"))

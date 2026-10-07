@@ -361,7 +361,42 @@ async function joinBox(req: Request, env: Env): Promise<Response> {
 
 interface Beat {
   stats: Stats;
-  databases: { id: string; status: string; location: string; running: boolean; connections: number }[];
+  databases: BeatDb[];
+}
+
+const SAMPLE_EVERY_MS = 55_000;
+const METRIC_DAYS = 7;
+
+/** Heartbeats are every 20 seconds, which is finer than any graph needs.
+ *  Keep about one sample a minute so a week of history stays cheap. */
+async function recordMetrics(env: Env, beats: BeatDb[]): Promise<void> {
+  if (beats.length === 0) return;
+  const at = now();
+  const cutoff = new Date(Date.now() - SAMPLE_EVERY_MS).toISOString();
+  const recent = await env.DB.prepare(
+    `SELECT db_id, max(at) AS last FROM metrics WHERE at > ? GROUP BY db_id`,
+  ).bind(cutoff).all<{ db_id: string; last: string }>();
+  const seen = new Set(recent.results.map((r) => r.db_id));
+
+  const rows = beats.filter((d) => !seen.has(d.id));
+  if (rows.length === 0) return;
+  await env.DB.batch(
+    rows.map((d) =>
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO metrics
+           (db_id, at, running, connections, memory_bytes, cpu_usec,
+            tup_inserted, tup_updated, tup_deleted, tup_fetched, deadlocks,
+            blks_hit, blks_read, xact_commit, xact_rollback)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        d.id, at, d.running ? 1 : 0, d.connections,
+        d.memory_bytes ?? null, d.cpu_usec ?? null,
+        d.pg?.tup_inserted ?? null, d.pg?.tup_updated ?? null, d.pg?.tup_deleted ?? null,
+        d.pg?.tup_fetched ?? null, d.pg?.deadlocks ?? null, d.pg?.blks_hit ?? null,
+        d.pg?.blks_read ?? null, d.pg?.xact_commit ?? null, d.pg?.xact_rollback ?? null,
+      ),
+    ),
+  );
 }
 
 async function heartbeat(req: Request, env: Env, id: string): Promise<Response> {
@@ -381,6 +416,7 @@ async function heartbeat(req: Request, env: Env, id: string): Promise<Response> 
     ),
   ];
   await env.DB.batch(stmts);
+  await recordMetrics(env, b.databases ?? []);
   const { results } = await env.DB.prepare("SELECT id FROM databases WHERE box_id = ?").bind(id).all<{ id: string }>();
   return json({ databases: results.map((r) => r.id) });
 }
@@ -485,6 +521,17 @@ async function adminStats(env: Env): Promise<Response> {
     signups: signups.results,
   });
 }
+
+type BeatDb = {
+  id: string;
+  status: string;
+  location: string;
+  running: boolean;
+  connections: number;
+  memory_bytes?: number;
+  cpu_usec?: number;
+  pg?: Record<string, number>;
+};
 
 async function route(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
@@ -592,6 +639,16 @@ async function route(req: Request, env: Env): Promise<Response> {
       );
     }
 
+    if (id && action === "metrics" && m === "GET") {
+      const db = await loadDb(env, c, id);
+      const hours = Math.min(Number(url.searchParams.get("hours") ?? 1) || 1, 24 * METRIC_DAYS);
+      const since = new Date(Date.now() - hours * 3_600_000).toISOString();
+      const { results } = await env.DB.prepare(
+        "SELECT * FROM metrics WHERE db_id = ? AND at >= ? ORDER BY at",
+      ).bind(db.id, since).all();
+      return json({ hours, samples: results });
+    }
+
     if (id && action === "restore-points" && m === "GET") {
       const db = await loadDb(env, c, id);
       const snaps = await agent<{ taken_at: string; kind: string }[]>(
@@ -625,5 +682,9 @@ export default {
   async scheduled(_: ScheduledController, env: Env): Promise<void> {
     const cutoff = new Date(Date.now() - 2 * 60_000).toISOString();
     await env.DB.prepare("UPDATE boxes SET status = 'offline' WHERE status = 'active' AND last_seen < ?").bind(cutoff).run();
+    // History is for graphs, not for keeping: drop anything past the window.
+    await env.DB.prepare("DELETE FROM metrics WHERE at < ?")
+      .bind(new Date(Date.now() - METRIC_DAYS * 86_400_000).toISOString())
+      .run();
   },
 } satisfies ExportedHandler<Env>;

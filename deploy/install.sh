@@ -116,7 +116,9 @@ cat > /etc/letsencrypt/renewal-hooks/deploy/barua.sh <<'HOOK'
 # restart it. Databases keep running across agent restarts.
 install -o barua -g barua -m 640 "$RENEWED_LINEAGE/fullchain.pem" /etc/barua/tls/fullchain.pem
 install -o barua -g barua -m 640 "$RENEWED_LINEAGE/privkey.pem" /etc/barua/tls/privkey.pem
-systemctl try-restart barua
+# On a first install this hook runs before the unit exists; try-restart then
+# exits 5 and would abort the install.
+systemctl try-restart barua 2>/dev/null || true
 HOOK
 chmod 755 /etc/letsencrypt/renewal-hooks/deploy/barua.sh
 # A box-specific extra name keeps each box's certificate distinct, so Let's

@@ -492,7 +492,16 @@ impl App {
         if !rt.is_running() {
             return Ok(None);
         }
-        Ok(Some(self.flush_wal(&db).await?))
+        let lsn = self.flush_wal(&db).await?;
+        // Nothing was written since the previous switch, so the LSN rests on a
+        // segment boundary. pg_switch_wal() does not open a segment for it and
+        // no archived WAL ever reaches it, so recovering to it dies with
+        // "recovery ended before configured recovery target was reached".
+        // "Now" and "everything archived" are the same point here.
+        if lsn.is_segment_boundary() {
+            return Ok(None);
+        }
+        Ok(Some(lsn))
     }
 
     /// Stop an idle database (scale to zero). `force` ignores open sessions.

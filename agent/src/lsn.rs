@@ -19,6 +19,14 @@ impl Lsn {
     pub fn segno(self) -> u64 {
         self.0 / WAL_SEGMENT_SIZE
     }
+
+    /// True when the LSN sits exactly where a segment begins, which is where
+    /// `pg_current_wal_lsn()` rests while nothing has been written since the
+    /// last switch. No archived WAL ever reaches such an LSN, so it must not
+    /// be used as a recovery target.
+    pub fn is_segment_boundary(self) -> bool {
+        self.0 % WAL_SEGMENT_SIZE == 0
+    }
 }
 
 impl fmt::Display for Lsn {
@@ -72,6 +80,18 @@ mod tests {
         let l: Lsn = "1/2A0000C8".parse().unwrap();
         assert_eq!(l.0, 0x1_2A00_00C8);
         assert_eq!(l.to_string(), "1/2A0000C8");
+    }
+
+    #[test]
+    fn segment_boundaries() {
+        // Where pg_current_wal_lsn() rests when nothing has been written since
+        // the last switch: unreachable as a recovery target.
+        assert!("0/C00000".parse::<Lsn>().unwrap().is_segment_boundary());
+        assert!("0/0".parse::<Lsn>().unwrap().is_segment_boundary());
+        assert!("1/0".parse::<Lsn>().unwrap().is_segment_boundary());
+        // Anything mid-segment is a real, replayable position.
+        assert!(!"0/B13338".parse::<Lsn>().unwrap().is_segment_boundary());
+        assert!(!"0/C00001".parse::<Lsn>().unwrap().is_segment_boundary());
     }
 
     #[test]

@@ -5,6 +5,14 @@ compatibility_date = "2025-09-01"
 # The control plane API: https://pgapi.barua.tz
 routes = [{ pattern = "pgapi.barua.tz", custom_domain = true }]
 
+# The dashboard: a Vite build in ui/dist, served straight from the edge. The
+# Worker still owns /v1 and /health; everything else falls through to the app,
+# and unknown paths return index.html so client-side routing works on reload.
+[assets]
+directory = "./ui/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/v1/*", "/health"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "barua"

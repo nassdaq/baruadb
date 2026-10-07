@@ -6,3 +6,5 @@ node_modules/
 .wrangler/
 .dev.vars
 control/wrangler.tmp.toml
+control/ui/node_modules/
+control/ui/dist/

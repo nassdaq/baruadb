@@ -2,7 +2,6 @@
 // Postgres work happens on the boxes, which this Worker drives over HTTPS.
 
 import { agent, Box, deleteDns, Env, upsertDns } from "./infra";
-import { UI_HTML } from "./ui";
 import {
   createSession,
   destroySession,
@@ -493,9 +492,7 @@ async function route(req: Request, env: Env): Promise<Response> {
   const m = req.method;
   if (parts[0] !== "v1") {
     if (url.pathname === "/health") return json({ service: "barua-control", ok: true });
-    if (url.pathname === "/" && m === "GET") {
-      return new Response(UI_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
-    }
+    // Everything else is the dashboard, served from ui/dist as static assets.
     throw new HttpError(404, "not found");
   }
   const [, resource, id, action] = parts;

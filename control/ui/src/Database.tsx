@@ -18,6 +18,7 @@ import {
   TextField,
 } from "./components";
 import { NavGroup, NavLink, PageHead } from "./Shell";
+import { DataGrid, type EditPlan, type Filter, FilterBar, SelectionBar, whereClause } from "./Grid";
 
 export type Section = "overview" | "branches" | "tables" | "sql" | "backups" | "roles";
 const PAGE = 50;
@@ -308,7 +309,7 @@ function Roles({ db }: { db: Database }) {
     <>
       <PageHead title="Roles" subtitle="Roles inside this database. Yours owns the data; none of them is a superuser." />
       {error && <ErrorNote>{error}</ErrorNote>}
-      {rows && <Grid result={rows} />}
+      {rows && <DataGrid result={rows} />}
     </>
   );
 }
@@ -328,6 +329,8 @@ function TablesConsole({ db }: { db: Database }) {
   const [rows, setRows] = useState<QueryResult | null>(null);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
+  const [filters, setFilters] = useState<Filter[]>([]);
+  const [selection, setSelection] = useState<Set<number>>(new Set());
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -353,13 +356,14 @@ function TablesConsole({ db }: { db: Database }) {
   }, [schema, run]);
 
   const loadRows = useCallback(
-    async (name: string, p: number, s: typeof sort) => {
+    async (name: string, p: number, s: typeof sort, f: Filter[] = []) => {
       setBusy(true);
       setError("");
+      setSelection(new Set());
       try {
         const order = s ? ` order by ${ident(s.col)} ${s.dir === "asc" ? "asc" : "desc"}` : "";
         const data = await run(
-          `select * from ${ident(schema)}.${ident(name)}${order} limit ${PAGE} offset ${p * PAGE}`,
+          `select * from ${ident(schema)}.${ident(name)}${whereClause(f)}${order} limit ${PAGE} offset ${p * PAGE}`,
         );
         setRows(data);
       } catch (e) {
@@ -376,9 +380,10 @@ function TablesConsole({ db }: { db: Database }) {
     setTable(name);
     setPage(0);
     setSort(null);
+    setFilters([]);
     setView("data");
     run(CATALOG.columns(schema, name), 500).then(setColumns).catch(() => setColumns(null));
-    loadRows(name, 0, null);
+    loadRows(name, 0, null, filters);
   };
 
   const meta = columns?.rows ?? [];
@@ -405,10 +410,26 @@ function TablesConsole({ db }: { db: Database }) {
               1,
             );
             if (r.rows_affected === 0) throw new Error("no row matched; it may have been deleted");
-            await loadRows(table, page, sort);
+            await loadRows(table, page, sort, filters);
           },
         }
       : null;
+
+  const deleteSelected = async () => {
+    if (!table || !rows || selection.size === 0 || pk.length === 0) return;
+    const at = (name: string) => rows.columns.indexOf(name);
+    const chosen = [...selection].map((i) => rows.rows[i]!);
+    const where = chosen
+      .map((row) => "(" + pk.map((k) => `${ident(k)} = ${literal(row[at(k)] ?? "")}`).join(" and ") + ")")
+      .join(" or ");
+    if (!confirm(`Delete ${chosen.length} ${chosen.length === 1 ? "row" : "rows"}? This cannot be undone.`)) return;
+    try {
+      await run(`delete from ${ident(schema)}.${ident(table)} where ${where}`, 1);
+      await loadRows(table, page, sort, filters);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    }
+  };
 
   const whyReadOnly = !table
     ? null
@@ -481,7 +502,16 @@ function TablesConsole({ db }: { db: Database }) {
               <Button size="sm" onClick={() => setAdding(true)}>
                 ⊕ Add record
               </Button>
-              <Button size="sm" onClick={() => loadRows(table, page, sort)} title="Refresh">
+              <FilterBar
+                columns={rows?.columns ?? []}
+                filters={filters}
+                onChange={(f) => {
+                  setFilters(f);
+                  setPage(0);
+                  loadRows(table, 0, sort, f);
+                }}
+              />
+              <Button size="sm" onClick={() => loadRows(table, page, sort, filters)} title="Refresh">
                 ↻
               </Button>
               {sort && (
@@ -494,7 +524,7 @@ function TablesConsole({ db }: { db: Database }) {
                   read only
                 </span>
               ) : (
-                <span className="text-[11px] text-faint">double-click a cell to edit</span>
+                <span className="text-[11px] text-faint">click a cell to edit</span>
               )}
               <div className="ml-auto flex items-center gap-3 text-[12px] text-dim">
                 {rows && <span className="text-faint">{rows.ms} ms</span>}
@@ -508,7 +538,7 @@ function TablesConsole({ db }: { db: Database }) {
                     disabled={page === 0}
                     onClick={() => {
                       setPage(page - 1);
-                      loadRows(table, page - 1, sort);
+                      loadRows(table, page - 1, sort, filters);
                     }}
                   >
                     ‹
@@ -518,7 +548,7 @@ function TablesConsole({ db }: { db: Database }) {
                     disabled={(rows?.rows.length ?? 0) < PAGE}
                     onClick={() => {
                       setPage(page + 1);
-                      loadRows(table, page + 1, sort);
+                      loadRows(table, page + 1, sort, filters);
                     }}
                   >
                     ›
@@ -527,6 +557,11 @@ function TablesConsole({ db }: { db: Database }) {
               </div>
             </div>
 
+            <SelectionBar
+              count={selection.size}
+              onClear={() => setSelection(new Set())}
+              onDelete={deleteSelected}
+            />
             <div className="min-h-0 flex-1 overflow-auto">
               {error && <div className="p-3"><ErrorNote>{error}</ErrorNote></div>}
               {busy ? (
@@ -535,17 +570,21 @@ function TablesConsole({ db }: { db: Database }) {
                 columns && <Structure result={columns} />
               ) : (
                 rows && (
-                  <Grid
+                  <DataGrid
                     result={rows}
                     types={columnTypes(columns)}
                     edit={editPlan}
+                    selection={editPlan ? selection : undefined}
+                    onSelection={editPlan ? setSelection : undefined}
                     sort={sort}
-                    onSort={(col) => {
-                      const next: typeof sort =
-                        sort?.col === col ? { col, dir: sort.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" };
+                    onSort={(col: string) => {
+                      const next: { col: string; dir: "asc" | "desc" } =
+                        sort?.col === col
+                          ? { col, dir: sort.dir === "asc" ? "desc" : "asc" }
+                          : { col, dir: "asc" };
                       setSort(next);
                       setPage(0);
-                      loadRows(table, 0, next);
+                      loadRows(table, 0, next, filters);
                     }}
                     flush
                   />
@@ -568,22 +607,13 @@ function TablesConsole({ db }: { db: Database }) {
               1,
             );
             setAdding(false);
-            loadRows(table, page, sort);
+            loadRows(table, page, sort, filters);
           }}
         />
       )}
     </div>
   );
 }
-
-type EditPlan = {
-  /** Columns that identify a row. Without them an UPDATE could hit many rows. */
-  pk: string[];
-  /** Columns Postgres computes; writing them is an error. */
-  readOnly: Set<string>;
-  nullable: Set<string>;
-  save: (row: (string | null)[], column: string, value: string | null) => Promise<void>;
-};
 
 const columnTypes = (columns: QueryResult | null): Record<string, string> =>
   Object.fromEntries((columns?.rows ?? []).map((c) => [c[0]!, c[1]!]));
@@ -729,7 +759,7 @@ function SqlEditor({ db }: { db: Database }) {
             <ErrorNote>{error}</ErrorNote>
           </div>
         ) : result ? (
-          <Grid result={result} flush />
+          <DataGrid result={result} flush />
         ) : (
           <Empty>Results appear here.</Empty>
         )}
@@ -738,169 +768,3 @@ function SqlEditor({ db }: { db: Database }) {
   );
 }
 
-// ---------------------------------------------------------------- grid
-
-function Grid({
-  result,
-  types,
-  sort,
-  onSort,
-  edit,
-  flush,
-}: {
-  result: QueryResult;
-  types?: Record<string, string>;
-  sort?: { col: string; dir: "asc" | "desc" } | null;
-  onSort?: (col: string) => void;
-  edit?: EditPlan | null;
-  flush?: boolean;
-}) {
-  const [editing, setEditing] = useState<{ row: number; col: string } | null>(null);
-  const [error, setError] = useState("");
-  if (result.columns.length === 0) {
-    return (
-      <div className={cx("text-[13px] text-dim", flush ? "p-4" : "")}>
-        No rows returned{result.rows_affected !== null && ` · ${result.rows_affected} affected`}.
-      </div>
-    );
-  }
-  const body = (
-    <table className="w-full border-separate border-spacing-0">
-      <thead className="sticky top-0 z-10">
-        <tr>
-          <th className="w-9 border-b border-r border-line bg-panel px-2 py-2" />
-          {result.columns.map((c) => (
-            <th
-              key={c}
-              onClick={() => onSort?.(c)}
-              className={cx(
-                "whitespace-nowrap border-b border-r border-line bg-panel px-3 py-2 text-left text-[12px] font-normal last:border-r-0",
-                onSort && "cursor-pointer hover:bg-raise",
-              )}
-            >
-              <span className="text-text">{c}</span>
-              {types?.[c] && <span className="ml-2 font-mono text-[11px] text-faint">{types[c]}</span>}
-              {sort?.col === c && <span className="ml-1 text-neon">{sort.dir === "asc" ? "↑" : "↓"}</span>}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {result.rows.map((row, i) => (
-          <tr key={i} className="group">
-            <td className="border-b border-r border-line-soft px-2 py-1.5 text-center text-[11px] text-faint group-hover:bg-raise/40">
-              {i + 1}
-            </td>
-            {row.map((cell, j) => {
-              const col = result.columns[j]!;
-              const writable = Boolean(edit) && !edit!.readOnly.has(col);
-              const active = editing?.row === i && editing.col === col;
-              return (
-                <td
-                  key={j}
-                  onDoubleClick={() => writable && setEditing({ row: i, col })}
-                  className={cx(
-                    "max-w-[320px] border-b border-r border-line-soft px-3 py-1.5 font-mono text-[12px] text-dim last:border-r-0",
-                    active ? "bg-raise p-0" : "truncate group-hover:bg-raise/40",
-                    writable && !active && "cursor-text",
-                  )}
-                  title={writable ? (cell ?? "null") : edit ? `${col} is generated by the database` : (cell ?? "null")}
-                >
-                  {active ? (
-                    <CellEditor
-                      initial={cell}
-                      nullable={edit!.nullable.has(col)}
-                      onCancel={() => setEditing(null)}
-                      onSave={async (value) => {
-                        setError("");
-                        try {
-                          await edit!.save(row, col, value);
-                          setEditing(null);
-                        } catch (e) {
-                          setError(e instanceof ApiError ? e.message : String((e as Error).message ?? e));
-                        }
-                      }}
-                    />
-                  ) : cell === null ? (
-                    <span className="text-faint italic">NULL</span>
-                  ) : (
-                    cell
-                  )}
-                </td>
-              );
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-
-  return (
-    <>
-      {error && (
-        <div className="sticky left-0 border-t border-line bg-rose/5 px-4 py-2 text-xs text-rose/90">{error}</div>
-      )}
-      {flush ? body : <Card className="overflow-x-auto">{body}</Card>}
-      {result.truncated && (
-        <div className="border-t border-line px-4 py-2 text-xs text-amber">
-          Showing the first {result.rows.length} rows.
-        </div>
-      )}
-    </>
-  );
-}
-
-
-/** One cell, open for editing. Enter saves, Escape cancels, ∅ writes NULL.
- *  Typing "NULL" is deliberately not special: a text column may hold that word. */
-function CellEditor({
-  initial,
-  nullable,
-  onSave,
-  onCancel,
-}: {
-  initial: string | null;
-  nullable: boolean;
-  onSave: (value: string | null) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(initial ?? "");
-  const [busy, setBusy] = useState(false);
-
-  const commit = async (v: string | null) => {
-    if (v === initial) return onCancel();
-    setBusy(true);
-    await onSave(v);
-    setBusy(false);
-  };
-
-  return (
-    <div className="flex items-center gap-1 px-1 py-0.5">
-      <input
-        autoFocus
-        value={value}
-        disabled={busy}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit(value);
-          if (e.key === "Escape") onCancel();
-        }}
-        onBlur={() => commit(value)}
-        className="w-full min-w-0 rounded border border-neon/50 bg-base px-1.5 py-1 font-mono text-[12px] text-text focus:outline-none"
-      />
-      {nullable && (
-        <button
-          onMouseDown={(e) => {
-            // mousedown, not click: blur would commit the text value first.
-            e.preventDefault();
-            commit(null);
-          }}
-          title="Set NULL"
-          className="shrink-0 rounded border border-line px-1 text-[11px] text-faint hover:text-text"
-        >
-          ∅
-        </button>
-      )}
-    </div>
-  );
-}

@@ -65,6 +65,11 @@ CF_DNS_API_TOKEN=… \
 bash install.sh
 ```
 
+The wildcard certificate is issued over DNS-01, so the box needs write access to
+whichever provider is authoritative for the domain: `CF_DNS_API_TOKEN` for
+Cloudflare, or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` for Route 53. Use an
+IAM user scoped to `route53:ChangeResourceRecordSets` on that one hosted zone.
+
 It installs Postgres 16, gets a wildcard certificate for `*.pg.barua.tz`,
 installs the agent as a systemd service, and the box **joins the cluster by
 itself**. New databases are placed on the box with the most free memory.

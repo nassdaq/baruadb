@@ -11,8 +11,11 @@
 # Required:
 #   BARUA_JOIN_TOKEN            the control plane's JOIN_TOKEN secret
 #   BARUA_R2_ACCOUNT_ID, BARUA_R2_ACCESS_KEY_ID, BARUA_R2_SECRET_ACCESS_KEY
+# DNS credentials for the wildcard certificate (DNS-01) — one of:
 #   CF_DNS_API_TOKEN            Cloudflare token with Zone.DNS edit on barua.tz
-#                               (used only by certbot for the wildcard certificate)
+#   AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+#                               an IAM user limited to route53:ChangeResourceRecordSets
+#                               on the hosted zone (never root keys)
 # Optional:
 #   BARUA_CONTROL_URL           default https://pgapi.barua.tz
 #   BARUA_R2_BUCKET             default barua
@@ -28,7 +31,16 @@ need BARUA_JOIN_TOKEN
 need BARUA_R2_ACCOUNT_ID
 need BARUA_R2_ACCESS_KEY_ID
 need BARUA_R2_SECRET_ACCESS_KEY
-need CF_DNS_API_TOKEN
+# The wildcard certificate is issued over DNS-01, so certbot needs write access
+# to whichever provider is authoritative for $BARUA_DOMAIN.
+if [[ -n "${CF_DNS_API_TOKEN:-}" ]]; then
+  DNS_PROVIDER=cloudflare
+elif [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+  DNS_PROVIDER=route53
+else
+  echo "missing DNS credentials: set CF_DNS_API_TOKEN, or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY" >&2
+  exit 1
+fi
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 
 CONTROL_URL=${BARUA_CONTROL_URL:-https://pgapi.barua.tz}
@@ -72,11 +84,28 @@ else
 fi
 chmod 755 /usr/local/bin/barua
 
-echo "==> wildcard certificate for *.$DOMAIN"
-apt-get install -yq certbot python3-certbot-dns-cloudflare
-umask 077
-printf 'dns_cloudflare_api_token = %s\n' "$CF_DNS_API_TOKEN" > /etc/barua/cloudflare.ini
-umask 022
+echo "==> wildcard certificate for *.$DOMAIN (DNS-01 via $DNS_PROVIDER)"
+if [[ $DNS_PROVIDER == cloudflare ]]; then
+  apt-get install -yq certbot python3-certbot-dns-cloudflare
+  umask 077
+  printf 'dns_cloudflare_api_token = %s\n' "$CF_DNS_API_TOKEN" > /etc/barua/cloudflare.ini
+  umask 022
+  DNS_ARGS=(--dns-cloudflare --dns-cloudflare-credentials /etc/barua/cloudflare.ini
+            --dns-cloudflare-propagation-seconds 30)
+else
+  apt-get install -yq certbot python3-certbot-dns-route53
+  # Renewals run from a systemd timer with no environment, so the keys have to
+  # be on disk. Use an IAM user limited to this zone, never root keys.
+  install -d -m 700 /root/.aws
+  umask 077
+  cat > /root/.aws/credentials <<EOF
+[default]
+aws_access_key_id = $AWS_ACCESS_KEY_ID
+aws_secret_access_key = $AWS_SECRET_ACCESS_KEY
+EOF
+  umask 022
+  DNS_ARGS=(--dns-route53 --dns-route53-propagation-seconds 30)
+fi
 mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/barua.sh <<'HOOK'
 #!/bin/sh
@@ -90,8 +119,7 @@ chmod 755 /etc/letsencrypt/renewal-hooks/deploy/barua.sh
 # A box-specific extra name keeps each box's certificate distinct, so
 # Let's Encrypt's duplicate-certificate limit never blocks adding boxes.
 if [[ -n "${CERT_EMAIL:-}" ]]; then ACCOUNT=(-m "$CERT_EMAIL"); else ACCOUNT=(--register-unsafely-without-email); fi
-certbot certonly -n --agree-tos "${ACCOUNT[@]}" \
-  --dns-cloudflare --dns-cloudflare-credentials /etc/barua/cloudflare.ini --dns-cloudflare-propagation-seconds 30 \
+certbot certonly -n --agree-tos "${ACCOUNT[@]}" "${DNS_ARGS[@]}" \
   --cert-name barua -d "*.$DOMAIN" -d "node-$BOX_NAME.$DOMAIN"
 RENEWED_LINEAGE=/etc/letsencrypt/live/barua /etc/letsencrypt/renewal-hooks/deploy/barua.sh
 

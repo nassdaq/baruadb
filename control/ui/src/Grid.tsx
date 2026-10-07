@@ -1,11 +1,11 @@
 // The data grid: selection, in-place editing, sorting, and the filter bar that
 // drives the WHERE clause. Kept apart from the page layout because all four of
 // those things talk to each other.
-import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
+import { Input, Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { ArrowsUpDownIcon, FunnelIcon, TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, ident, literal, type QueryResult } from "./api";
-import { Button, cx, Select } from "./components";
+import { Button, CheckBox, cx, Select } from "./components";
 
 // ---------------------------------------------------------------- filters
 
@@ -131,12 +131,12 @@ function AddFilter({ columns, onAdd }: { columns: string[]; onAdd: (f: Filter) =
         <Select value={column} onChange={setColumn} options={columns} />
         <Select value={op} onChange={setOp} options={OPS} />
         {needsValue && (
-          <input
+          <Input
             autoFocus
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="value"
-            className="w-full rounded-md border border-line bg-base px-2.5 py-1.5 font-mono text-[13px] text-text placeholder:text-faint focus:border-edge focus:outline-none"
+            className="w-full rounded-md border border-line bg-base px-2.5 py-1.5 font-mono text-[13px] text-text placeholder:text-faint data-focus:border-edge data-focus:outline-none"
           />
         )}
       </div>
@@ -205,7 +205,7 @@ export function DataGrid({
         <tr>
           <th className="w-10 border-b border-r border-line bg-panel px-2 py-2 text-center">
             {selectable ? (
-              <Check checked={allOnPage} onChange={toggleAll} title="Select all on this page" />
+              <CheckBox checked={allOnPage} onChange={toggleAll} title="Select all on this page" />
             ) : null}
           </th>
           {result.columns.map((c) => (
@@ -238,12 +238,12 @@ export function DataGrid({
                 {selectable ? (
                   <span className="flex items-center justify-center">
                     <span className="hidden group-hover:block">
-                      <Check checked={picked} onChange={() => toggleRow(i)} />
+                      <CheckBox checked={picked} onChange={() => toggleRow(i)} />
                     </span>
                     <span className={cx("block group-hover:hidden", picked && "!hidden")}>{i + 1}</span>
                     {picked && (
                       <span className="block group-hover:hidden">
-                        <Check checked onChange={() => toggleRow(i)} />
+                        <CheckBox checked onChange={() => toggleRow(i)} />
                       </span>
                     )}
                   </span>
@@ -318,19 +318,6 @@ export function DataGrid({
   );
 }
 
-function Check({ checked, onChange, title }: { checked: boolean; onChange: () => void; title?: string }) {
-  return (
-    <input
-      type="checkbox"
-      checked={checked}
-      title={title}
-      onChange={onChange}
-      onClick={(e) => e.stopPropagation()}
-      className="size-3.5 cursor-pointer appearance-none rounded border border-edge bg-base checked:border-neon checked:bg-neon/80 focus:outline-none"
-    />
-  );
-}
-
 /** One cell, open for editing. Enter saves, Escape cancels, ∅ writes NULL.
  *  Typing "NULL" is deliberately not special: a text column may hold that word. */
 function CellEditor({
@@ -359,7 +346,7 @@ function CellEditor({
 
   return (
     <div className="flex items-center gap-1 px-1 py-0.5">
-      <input
+      <Input
         autoFocus
         value={value}
         disabled={busy}
@@ -372,7 +359,7 @@ function CellEditor({
           }
         }}
         onBlur={() => commit(value)}
-        className="w-full min-w-0 rounded border border-neon/60 bg-base px-1.5 py-1 font-mono text-[12px] text-text focus:outline-none"
+        className="w-full min-w-0 rounded border border-neon/60 bg-base px-1.5 py-1 font-mono text-[12px] text-text data-focus:outline-none"
       />
       {nullable && (
         <button

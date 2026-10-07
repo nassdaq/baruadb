@@ -1,8 +1,9 @@
-import { Textarea } from "@headlessui/react";
+import { Disclosure, DisclosureButton, DisclosurePanel, Input, Textarea } from "@headlessui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError, CATALOG, ident, literal, type Database, type QueryResult } from "./api";
 import {
   ago,
+  Choice,
   Badge,
   Button,
   Card,
@@ -143,10 +144,26 @@ function Overview({ db }: { db: Database }) {
         <p className="mt-2.5 text-xs text-faint">
           The password appears once, when the database is created or its password reset.
         </p>
-        <div className="mt-4 border-t border-line-soft pt-4">
-          <div className="mb-2 text-[13px] font-medium">psql</div>
-          <CopyField value={`psql "${db.connection_uri}"`} />
-        </div>
+        <Disclosure as="div" className="mt-4 border-t border-line-soft pt-4">
+          <DisclosureButton className="group flex w-full items-center gap-2 text-left text-[13px] font-medium">
+            <span className="text-faint transition group-data-open:rotate-90">›</span>
+            Other ways to connect
+          </DisclosureButton>
+          <DisclosurePanel className="mt-3 space-y-3">
+            <div>
+              <div className="mb-1.5 text-[12px] text-dim">psql</div>
+              <CopyField value={`psql "${db.connection_uri}"`} />
+            </div>
+            <div>
+              <div className="mb-1.5 text-[12px] text-dim">Node</div>
+              <CopyField value={`new pg.Pool({ connectionString: "${db.connection_uri}" })`} />
+            </div>
+            <div>
+              <div className="mb-1.5 text-[12px] text-dim">Environment variable</div>
+              <CopyField value={`DATABASE_URL=${db.connection_uri}`} />
+            </div>
+          </DisclosurePanel>
+        </Disclosure>
       </Card>
     </>
   );
@@ -257,25 +274,24 @@ function BranchDialog({
       >
         <TextField label="Branch name" value={name} onChange={setName} placeholder="staging" autoFocus mono />
         <div className="mb-1.5 text-[12px] text-dim">Branch from</div>
-        <div className="mb-3 flex overflow-hidden rounded-md border border-line">
-          {([["now", "Now"], ["time", "A moment in time"]] as const).map(([v, label]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setFrom(v)}
-              className={cx("flex-1 px-3 py-1.5 text-[13px]", from === v ? "bg-raise text-text" : "text-dim hover:bg-raise/60")}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Choice
+          label="branch point"
+          value={from}
+          onChange={setFrom}
+          className="mb-3"
+          options={[
+            ["now", "Now"],
+            ["time", "A moment in time"],
+          ] as const}
+        />
         {from === "time" && (
           <>
-            <input
+            <Input
               type="datetime-local"
               value={when}
               onChange={(e) => setWhen(e.target.value)}
-              className="mb-2 w-full rounded-md border border-line bg-base px-2.5 py-2 font-mono text-[13px] text-text focus:border-edge focus:outline-none"
+              aria-label="point in time"
+              className="mb-2 w-full rounded-md border border-line bg-base px-2.5 py-2 font-mono text-[13px] text-text data-focus:border-edge data-focus:outline-none"
             />
             <p className={cx("mb-2 text-xs", tooEarly ? "text-rose" : "text-faint")}>
               {earliest
@@ -619,20 +635,15 @@ function TablesConsole({ db }: { db: Database }) {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-              <div className="flex overflow-hidden rounded-md border border-line">
-                {(["data", "structure"] as const).map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setView(v)}
-                    className={cx(
-                      "px-3 py-1 text-[12px] uppercase tracking-wide",
-                      view === v ? "bg-neon/15 text-neon" : "text-dim hover:bg-raise",
-                    )}
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
+              <Choice
+                label="view"
+                value={view}
+                onChange={setView}
+                options={[
+                  ["data", "DATA"],
+                  ["structure", "STRUCTURE"],
+                ] as const}
+              />
               <Button size="sm" onClick={() => setAdding(true)}>
                 ⊕ Add record
               </Button>

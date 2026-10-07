@@ -1,7 +1,7 @@
 // The "+" menu in the table list: everything you can make inside a database.
 // Each form builds SQL and runs it through the same query endpoint the rest of
 // the console uses, so nothing here can do more than the database's own role.
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { Input, Menu, MenuButton, MenuItem, MenuItems, MenuSeparator, Textarea } from "@headlessui/react";
 import {
   ArrowUpTrayIcon,
   PlusIcon,
@@ -14,7 +14,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { ident, literal, type QueryResult } from "./api";
-import { Button, cx, ErrorNote, Modal, Select, TextField } from "./components";
+import { Button, CheckBox, cx, ErrorNote, Group, Modal, Select, TextField, Toggle } from "./components";
 
 export type Kind = "schema" | "table" | "view" | "enum" | "role" | "policy" | "csv";
 
@@ -51,7 +51,7 @@ export function CreateMenu({ onPick }: { onPick: (k: Kind) => void }) {
             </button>
           </MenuItem>
         ))}
-        <div className="my-1 border-t border-line" />
+        <MenuSeparator className="my-1 h-px bg-line" />
         <MenuItem>
           <button
             onClick={() => onPick("csv")}
@@ -226,33 +226,35 @@ function TableForm({ error, busy, execute, schema, schemas, onClose }: FormProps
         </div>
       </div>
 
-      <div className="mb-1.5 text-[12px] text-dim">Columns</div>
+      <Group legend="Columns">
       <div className="max-h-[38vh] space-y-1.5 overflow-y-auto pr-1">
         {cols.map((c, i) => (
           <div key={i} className="flex items-center gap-1.5">
-            <input
+            <Input
               value={c.name}
               onChange={(e) => set(i, { name: e.target.value })}
               placeholder="column"
-              className="w-28 rounded-md border border-line bg-base px-2 py-1.5 font-mono text-[12px] focus:border-edge focus:outline-none"
+              aria-label="column name"
+              className="w-28 rounded-md border border-line bg-base px-2 py-1.5 font-mono text-[12px] data-focus:border-edge data-focus:outline-none"
             />
             <div className="w-36">
               <Select value={c.type} onChange={(t) => set(i, { type: t })} options={TYPES} />
             </div>
-            <input
+            <Input
               value={c.default}
               onChange={(e) => set(i, { default: e.target.value })}
               placeholder="default"
-              className="w-24 rounded-md border border-line bg-base px-2 py-1.5 font-mono text-[12px] focus:border-edge focus:outline-none"
+              aria-label="default value"
+              className="w-24 rounded-md border border-line bg-base px-2 py-1.5 font-mono text-[12px] data-focus:border-edge data-focus:outline-none"
             />
-            <label className="flex items-center gap-1 text-[11px] text-dim" title="Not null">
-              <input type="checkbox" checked={c.notNull} onChange={(e) => set(i, { notNull: e.target.checked })} />
+            <span className="flex items-center gap-1 text-[11px] text-dim" title="Not null">
+              <CheckBox checked={c.notNull} onChange={(v) => set(i, { notNull: v })} title="Not null" />
               nn
-            </label>
-            <label className="flex items-center gap-1 text-[11px] text-dim" title="Primary key">
-              <input type="checkbox" checked={c.pk} onChange={(e) => set(i, { pk: e.target.checked })} />
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-dim" title="Primary key">
+              <CheckBox checked={c.pk} onChange={(v) => set(i, { pk: v })} title="Primary key" />
               pk
-            </label>
+            </span>
             <button
               type="button"
               onClick={() => setCols((x) => x.filter((_, j) => j !== i))}
@@ -271,6 +273,7 @@ function TableForm({ error, busy, execute, schema, schemas, onClose }: FormProps
       >
         + add column
       </button>
+      </Group>
 
       <pre className="mt-3 max-h-28 overflow-auto rounded-md border border-line bg-base p-2.5 font-mono text-[11px] text-faint">
         {sql()}
@@ -302,12 +305,13 @@ function ViewForm({ error, busy, execute, schema, schemas, onClose }: FormProps)
         </div>
       </div>
       <div className="mb-1.5 text-[12px] text-dim">Query</div>
-      <textarea
+      <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={5}
         spellCheck={false}
-        className="w-full rounded-md border border-line bg-base p-2.5 font-mono text-[12px] text-text focus:border-edge focus:outline-none"
+        aria-label="view query"
+        className="w-full rounded-md border border-line bg-base p-2.5 font-mono text-[12px] text-text data-focus:border-edge data-focus:outline-none"
       />
       <Actions busy={busy} onClose={onClose} />
     </form>
@@ -340,12 +344,13 @@ function EnumForm({ error, busy, execute, schema, schemas, onClose }: FormProps)
         </div>
       </div>
       <div className="mb-1.5 text-[12px] text-dim">Values, one per line</div>
-      <textarea
+      <Textarea
         value={values}
         onChange={(e) => setValues(e.target.value)}
         rows={5}
         spellCheck={false}
-        className="w-full rounded-md border border-line bg-base p-2.5 font-mono text-[12px] text-text focus:border-edge focus:outline-none"
+        aria-label="enum values"
+        className="w-full rounded-md border border-line bg-base p-2.5 font-mono text-[12px] text-text data-focus:border-edge data-focus:outline-none"
       />
       <Actions busy={busy} onClose={onClose} />
     </form>
@@ -369,13 +374,12 @@ function RoleForm({ error, busy, execute, onClose }: FormProps) {
       {error && <ErrorNote>{error}</ErrorNote>}
       <TextField label="Name" value={name} onChange={setName} placeholder="reporting" autoFocus mono />
       <TextField label="Password" value={password} onChange={setPassword} type="password" placeholder="optional" />
-      <label className="mb-1 flex items-center gap-2 text-[13px] text-dim">
-        <input type="checkbox" checked={login} onChange={(e) => setLogin(e.target.checked)} />
-        Can log in
-      </label>
-      <p className="mt-2 text-xs text-faint">
-        Creating roles needs the CREATEROLE privilege. If your role does not have it, Postgres will say so.
-      </p>
+      <Toggle
+        checked={login}
+        onChange={setLogin}
+        label="Can log in"
+        hint="Creating roles needs CREATEROLE. Without it, Postgres will say so."
+      />
       <Actions busy={busy} onClose={onClose} />
     </form>
   );
@@ -413,15 +417,20 @@ function PolicyForm({ error, busy, execute, schema, tables, onClose }: FormProps
             <Select value={command} onChange={setCommand} options={["ALL", "SELECT", "INSERT", "UPDATE", "DELETE"]} />
           </div>
           <div className="mb-1.5 text-[12px] text-dim">USING expression</div>
-          <input
+          <Input
             value={using}
             onChange={(e) => setUsing(e.target.value)}
-            className="w-full rounded-md border border-line bg-base px-2.5 py-2 font-mono text-[12px] focus:border-edge focus:outline-none"
+            aria-label="using expression"
+            className="w-full rounded-md border border-line bg-base px-2.5 py-2 font-mono text-[12px] data-focus:border-edge data-focus:outline-none"
           />
-          <label className="mt-3 flex items-center gap-2 text-[13px] text-dim">
-            <input type="checkbox" checked={enable} onChange={(e) => setEnable(e.target.checked)} />
-            Enable row level security on the table
-          </label>
+          <div className="mt-3">
+            <Toggle
+              checked={enable}
+              onChange={setEnable}
+              label="Enable row level security"
+              hint="A policy has no effect until the table enforces it."
+            />
+          </div>
         </>
       )}
       <Actions busy={busy} onClose={onClose} />

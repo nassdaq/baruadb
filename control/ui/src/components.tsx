@@ -2,12 +2,17 @@
 // from Headless UI, looks from Tailwind.
 import {
   Button as HButton,
+  Checkbox as HCheckbox,
+  Description,
   Dialog,
+  DialogBackdrop,
   DialogPanel,
   DialogTitle,
   Field,
+  Fieldset,
   Input,
   Label,
+  Legend,
   Listbox,
   ListboxButton,
   ListboxOption,
@@ -16,7 +21,11 @@ import {
   MenuButton,
   MenuItem,
   MenuItems,
+  Radio,
+  RadioGroup,
+  Switch,
   Transition,
+  TransitionChild,
 } from "@headlessui/react";
 import { CheckIcon, ChevronDownIcon, EllipsisVerticalIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Fragment, type ReactNode } from "react";
@@ -124,11 +133,11 @@ export function SearchBox({
   return (
     <div className={cx("relative", className)}>
       <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-faint" />
-      <input
+      <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-md border border-line bg-panel py-2 pl-9 pr-3 text-[13px] text-text placeholder:text-faint focus:border-edge focus:outline-none"
+        className="w-full rounded-md border border-line bg-panel py-2 pl-9 pr-3 text-[13px] text-text placeholder:text-faint data-focus:border-edge data-focus:outline-none"
       />
     </div>
   );
@@ -142,6 +151,7 @@ export function TextField({
   placeholder,
   autoFocus,
   mono,
+  hint,
 }: {
   label: string;
   value: string;
@@ -150,6 +160,7 @@ export function TextField({
   placeholder?: string;
   autoFocus?: boolean;
   mono?: boolean;
+  hint?: string;
 }) {
   return (
     <Field className="mb-3">
@@ -166,6 +177,7 @@ export function TextField({
           mono && "font-mono",
         )}
       />
+      {hint && <Description className="mt-1 block text-xs text-faint">{hint}</Description>}
     </Field>
   );
 }
@@ -260,7 +272,7 @@ export function Modal({
   return (
     <Transition show={open} as={Fragment}>
       <Dialog onClose={onClose} className="relative z-50">
-        <Transition.Child
+        <TransitionChild
           as={Fragment}
           enter="duration-150 ease-out"
           enterFrom="opacity-0"
@@ -269,10 +281,10 @@ export function Modal({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/70" aria-hidden="true" />
-        </Transition.Child>
+          <DialogBackdrop className="fixed inset-0 bg-black/70" />
+        </TransitionChild>
         <div className="fixed inset-0 flex items-start justify-center overflow-y-auto p-4 pt-[12vh]">
-          <Transition.Child
+          <TransitionChild
             as={Fragment}
             enter="duration-150 ease-out"
             enterFrom="opacity-0 scale-95"
@@ -285,7 +297,7 @@ export function Modal({
               <DialogTitle className="text-[15px] font-medium">{title}</DialogTitle>
               <div className="mt-4">{children}</div>
             </DialogPanel>
-          </Transition.Child>
+          </TransitionChild>
         </div>
       </Dialog>
     </Transition>
@@ -328,4 +340,128 @@ export function ago(iso: string | null): string {
   if (s < 172800) return "A day ago";
   if (s < 2592000) return `${Math.floor(s / 86400)} days ago`;
   return `${Math.floor(s / 2592000)} months ago`;
+}
+
+
+// ---------------------------------------------------------------- choices
+
+/** A checkbox. Headless UI gives it the keyboard and ARIA behaviour; we only
+ *  say what it looks like in each state. */
+export function CheckBox({
+  checked,
+  onChange,
+  label,
+  title,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label?: string;
+  title?: string;
+}) {
+  const box = (
+    <HCheckbox
+      checked={checked}
+      onChange={onChange}
+      title={title}
+      className={cx(
+        "group flex size-4 shrink-0 cursor-pointer items-center justify-center rounded border transition",
+        "border-edge bg-base data-checked:border-neon data-checked:bg-neon",
+        "data-focus:outline-none data-focus:ring-1 data-focus:ring-neon/50",
+      )}
+    >
+      <svg viewBox="0 0 12 12" className="size-3 stroke-base opacity-0 group-data-checked:opacity-100" fill="none">
+        <path d="M2.5 6.5 5 9l4.5-5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </HCheckbox>
+  );
+  if (!label) return box;
+  return (
+    <Field className="flex items-center gap-2">
+      {box}
+      <Label className="cursor-pointer text-[13px] text-dim">{label}</Label>
+    </Field>
+  );
+}
+
+/** An on/off setting, where a checkbox would read as "tick to agree". */
+export function Toggle({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <Field className="mb-3 flex items-start gap-3">
+      <Switch
+        checked={checked}
+        onChange={onChange}
+        className={cx(
+          "group mt-0.5 flex h-5 w-9 shrink-0 cursor-pointer rounded-full p-0.5 transition",
+          "border border-line bg-raise data-checked:border-neon/50 data-checked:bg-neon/25",
+          "data-focus:outline-none data-focus:ring-1 data-focus:ring-neon/50",
+        )}
+      >
+        <span className="size-4 rounded-full bg-dim transition group-data-checked:translate-x-4 group-data-checked:bg-neon" />
+      </Switch>
+      <span>
+        <Label className="block cursor-pointer text-[13px] text-text">{label}</Label>
+        {hint && <Description className="block text-xs text-faint">{hint}</Description>}
+      </span>
+    </Field>
+  );
+}
+
+/** A segmented control: one of n, as a real radio group rather than buttons
+ *  that merely look like one. Arrow keys move between options. */
+export function Choice<T extends string>({
+  value,
+  onChange,
+  options,
+  label,
+  className,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: readonly (readonly [T, string])[];
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <RadioGroup
+      value={value}
+      onChange={onChange}
+      aria-label={label ?? "options"}
+      className={cx("flex overflow-hidden rounded-md border border-line", className)}
+    >
+      {options.map(([v, text]) => (
+        <Radio
+          key={v}
+          value={v}
+          className={cx(
+            "flex-1 cursor-pointer px-3 py-1.5 text-center text-[13px] transition",
+            "text-dim data-hover:bg-raise/60",
+            "data-checked:bg-raise data-checked:text-text",
+            "data-focus:outline-none data-focus:ring-1 data-focus:ring-inset data-focus:ring-edge",
+          )}
+        >
+          {text}
+        </Radio>
+      ))}
+    </RadioGroup>
+  );
+}
+
+/** A form section with a visible legend. */
+export function Group({ legend, children }: { legend: string; children: ReactNode }) {
+  return (
+    <Fieldset className="mb-4">
+      <Legend className="mb-2 text-[11px] uppercase tracking-wide text-faint">{legend}</Legend>
+      {children}
+    </Fieldset>
+  );
 }

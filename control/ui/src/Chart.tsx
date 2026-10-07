@@ -2,7 +2,7 @@
 // than the rest of this application put together, and these only ever draw a
 // handful of series over one axis of time.
 import { useMemo, useState } from "react";
-import { cx } from "./components";
+import { Choice } from "./components";
 
 export type Series = { label: string; color: string; points: (number | null)[] };
 
@@ -142,26 +142,17 @@ export function Chart({
 
 /** Buttons for the time window, as on every console. */
 export function RangePicker({ hours, onChange }: { hours: number; onChange: (h: number) => void }) {
-  const options: [string, number][] = [
-    ["Last hour", 1],
-    ["Last 6 hours", 6],
-    ["Last day", 24],
-    ["Last week", 168],
-  ];
   return (
-    <div className="flex overflow-hidden rounded-md border border-line">
-      {options.map(([label, h]) => (
-        <button
-          key={h}
-          onClick={() => onChange(h)}
-          className={cx(
-            "px-2.5 py-1 text-[12px]",
-            hours === h ? "bg-raise text-text" : "text-dim hover:bg-raise/60",
-          )}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
+    <Choice
+      label="time range"
+      value={String(hours)}
+      onChange={(v) => onChange(Number(v))}
+      options={[
+        ["1", "Last hour"],
+        ["6", "Last 6 hours"],
+        ["24", "Last day"],
+        ["168", "Last week"],
+      ] as const}
+    />
   );
 }

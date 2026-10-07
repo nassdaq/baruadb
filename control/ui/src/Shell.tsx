@@ -1,0 +1,124 @@
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { ChevronDownIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import type { ReactNode } from "react";
+import type { Me } from "./api";
+import { cx } from "./components";
+
+/** The brand mark: a small diamond, the way every console does it. */
+export const Mark = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 16 16" className={cx("size-4", className)} fill="none" aria-hidden="true">
+    <path d="M8 1.5 14.5 8 8 14.5 1.5 8 8 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+  </svg>
+);
+
+export type NavItem = {
+  label: string;
+  icon?: ReactNode;
+  active?: boolean;
+  onClick?: () => void;
+};
+
+export function Shell({
+  me,
+  onSignOut,
+  onSearch,
+  sidebar,
+  children,
+  footer,
+}: {
+  me: Me;
+  onSignOut: () => void;
+  onSearch: () => void;
+  sidebar: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <header className="flex h-[52px] shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
+        <div className="flex w-[164px] items-center gap-2 text-[15px] font-semibold tracking-tight">
+          <Mark className="text-neon" />
+          BARUA
+        </div>
+        <button
+          onClick={onSearch}
+          className="mx-auto hidden w-full max-w-[360px] items-center gap-2 rounded-md border border-line bg-base px-3 py-1.5 text-[13px] text-faint hover:border-edge md:flex"
+        >
+          <MagnifyingGlassIcon className="size-4" />
+          <span className="flex-1 text-left">Search…</span>
+          <kbd className="rounded border border-line px-1.5 py-px font-mono text-[11px] text-faint">⌘K</kbd>
+        </button>
+        <Menu>
+          <MenuButton className="ml-auto flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] data-hover:bg-raise">
+            <span className="grid size-6 place-items-center rounded bg-neon/15 text-[11px] font-semibold text-neon">
+              {me.email[0]?.toUpperCase()}
+            </span>
+            <span className="hidden text-dim sm:inline">{me.name || me.email.split("@")[0]}</span>
+            <ChevronDownIcon className="size-4 text-faint" />
+          </MenuButton>
+          <MenuItems
+            anchor="bottom end"
+            className="z-50 mt-1 w-56 rounded-md border border-line bg-panel p-1 text-[13px] shadow-2xl focus:outline-none"
+          >
+            <div className="border-b border-line px-2.5 py-2 text-xs text-faint">{me.email}</div>
+            <MenuItem>
+              <button
+                onClick={onSignOut}
+                className="mt-1 block w-full rounded px-2.5 py-1.5 text-left text-dim data-focus:bg-raise data-focus:text-text"
+              >
+                Sign out
+              </button>
+            </MenuItem>
+          </MenuItems>
+        </Menu>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-[180px] shrink-0 flex-col border-r border-line bg-panel">
+          <div className="min-h-0 flex-1 overflow-y-auto py-3">{sidebar}</div>
+          {footer && <div className="border-t border-line p-3">{footer}</div>}
+        </aside>
+        <main className="min-w-0 flex-1 overflow-auto">{children}</main>
+      </div>
+    </div>
+  );
+}
+
+export function NavGroup({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <div className="mb-4 px-2">
+      {title && <div className="mb-1.5 px-2 text-[10px] uppercase tracking-[0.08em] text-faint">{title}</div>}
+      {children}
+    </div>
+  );
+}
+
+export function NavLink({ label, icon, active, onClick }: NavItem) {
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        "mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] transition",
+        active ? "bg-raise text-text" : "text-dim hover:bg-raise/60 hover:text-text",
+      )}
+    >
+      <span className={cx("grid size-4 shrink-0 place-items-center", active ? "text-neon" : "text-faint")}>
+        {icon ?? <Mark />}
+      </span>
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+/** The page header strip: title on the left, actions on the right. */
+export function PageHead({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="mb-6 flex items-start gap-4">
+      <div className="min-w-0">
+        <h1 className="truncate text-[22px] font-semibold tracking-tight">{title}</h1>
+        {subtitle && <div className="mt-0.5 text-[13px] text-dim">{subtitle}</div>}
+      </div>
+      {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
+    </div>
+  );
+}

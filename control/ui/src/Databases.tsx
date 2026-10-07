@@ -1,17 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, ApiError, type Database, type Me } from "./api";
-import { ago, Button, Card, Dot, Empty, ErrorNote, Metric, Modal, RowMenu, TextField } from "./components";
+import {
+  ago,
+  Badge,
+  Button,
+  Card,
+  CopyField,
+  cx,
+  Dot,
+  ErrorNote,
+  Modal,
+  RowMenu,
+  SearchBox,
+  Stat,
+  TextField,
+} from "./components";
+import { Mark, PageHead } from "./Shell";
+
+const PER_PAGE = 10;
 
 export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void }) {
   const [list, setList] = useState<Database[] | null>(null);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [creating, setCreating] = useState(false);
   const [secret, setSecret] = useState<{ title: string; uri: string } | null>(null);
 
   const load = () => api.databases().then(setList).catch((e) => setError(String(e.message ?? e)));
   useEffect(() => {
     load();
-    // Databases fall asleep and wake on their own, so keep the list honest.
     const t = setInterval(load, 10_000);
     return () => clearInterval(t);
   }, []);
@@ -26,77 +44,152 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
     }
   };
 
+  const filtered = useMemo(
+    () => (list ?? []).filter((d) => (d.name + d.id).toLowerCase().includes(search.toLowerCase())),
+    [list, search],
+  );
+  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const shown = filtered.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
+  const branchesOf = (id: string) => (list ?? []).filter((d) => d.parent_id === id).length;
+
+  const awake = (list ?? []).filter((d) => d.state === "awake").length;
+  const cold = (list ?? []).filter((d) => d.state === "cold").length;
+  const connections = (list ?? []).reduce((n, d) => n + d.connections, 0);
+
   return (
-    <>
-      <div className="mb-6 flex items-center">
-        <div>
-          <h2 className="text-[15px] font-medium">Databases</h2>
-          <p className="text-[13px] text-mute-400">
-            {list ? `${list.length} of ${me.db_quota} used` : "…"}
-          </p>
+    <div className="mx-auto max-w-[1180px] px-8 py-7">
+      <PageHead
+        title={`${me.name || me.email.split("@")[0]}'s databases`}
+        actions={
+          <>
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <span className="text-[15px] leading-none">⊕</span> New database
+            </Button>
+          </>
+        }
+      />
+
+      <Card className="mb-7 p-5">
+        <div className="flex flex-wrap gap-8">
+          <Stat label="Databases" value={list?.length ?? "—"} hint="Every database you own, branches included" />
+          <Stat label="Awake" value={awake} hint="Running right now on a box" />
+          <Stat label="Cold" value={cold} hint="Living in R2 only, restored on the next connection" />
+          <Stat label="Connections" value={connections} hint="Open client connections" />
+          <Stat label="Quota" value={`${list?.length ?? 0} / ${me.db_quota}`} />
         </div>
-        <Button variant="primary" className="ml-auto" onClick={() => setCreating(true)}>
-          New database
-        </Button>
-      </div>
+        <p className="mt-4 border-t border-line-soft pt-3 text-xs text-faint">
+          A database sleeps after five idle minutes and wakes on the next connection. Sleeping costs nothing but storage.
+        </p>
+      </Card>
+
+      <h2 className="mb-3 text-[15px] font-medium">
+        {filtered.length} {filtered.length === 1 ? "Database" : "Databases"}
+      </h2>
+      <SearchBox value={search} onChange={(v) => (setSearch(v), setPage(0))} className="mb-3" />
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      {!list ? (
-        <Empty>loading…</Empty>
-      ) : list.length === 0 ? (
-        <Empty>No databases yet. Create one to get a connection string.</Empty>
-      ) : (
-        list.map((d) => (
-          <Card key={d.id} className="mb-3.5">
-            <div className="flex items-center gap-2.5 p-4">
-              <Dot state={d.status === "failed" ? "failed" : d.status === "creating" ? "creating" : d.state} />
-              <button onClick={() => onOpen(d.id)} className="font-medium hover:underline">
-                {d.name}
-              </button>
-              <span className="text-xs text-mute-400">{d.status === "ready" ? d.state : d.status}</span>
-              <span className="font-mono text-xs text-mute-500">{d.id}</span>
-              {d.parent_id && <span className="text-xs text-mute-500">branch of {d.parent_id}</span>}
-              <div className="ml-auto flex items-center gap-2">
-                <Button onClick={() => navigator.clipboard.writeText(d.connection_uri)}>Copy URL</Button>
-                <Button onClick={() => onOpen(d.id)}>Open</Button>
-                <RowMenu
-                  items={[
-                    {
-                      label: "Branch",
-                      onClick: () => {
-                        const name = prompt("Branch name");
-                        if (name) act(() => api.branch(d.id, name));
-                      },
-                    },
-                    {
-                      label: "Reset password",
-                      onClick: () =>
-                        act(async () => {
-                          const r = await api.resetPassword(d.id);
-                          setSecret({ title: `New password for ${d.name}`, uri: r.connection_uri });
-                        }),
-                    },
-                    {
-                      label: "Delete",
-                      danger: true,
-                      onClick: () => {
-                        if (confirm(`Delete ${d.name} and its history in R2?`)) act(() => api.deleteDatabase(d.id));
-                      },
-                    },
-                  ]}
-                />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-10 px-4 pb-4">
-              <Metric label="State" value={d.status === "ready" ? d.state : d.status} />
-              <Metric label="Connections" value={d.connections} />
-              <Metric label="Where" value={d.state === "cold" ? "R2 only" : "box disk"} />
-              <Metric label="Created" value={ago(d.created_at)} tone="plain" />
-            </div>
-          </Card>
-        ))
-      )}
+      <Card className="overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-line text-left text-[12px] text-dim">
+              <th className="px-4 py-2.5 font-normal">Name</th>
+              <th className="px-4 py-2.5 font-normal">Region</th>
+              <th className="px-4 py-2.5 font-normal">Created at</th>
+              <th className="px-4 py-2.5 font-normal">State</th>
+              <th className="px-4 py-2.5 font-normal">Connections</th>
+              <th className="px-4 py-2.5 font-normal">Branches</th>
+              <th className="w-10" />
+            </tr>
+          </thead>
+          <tbody>
+            {shown.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-12 text-center text-[13px] text-faint">
+                  {list === null ? "Loading…" : search ? "Nothing matches that." : "No databases yet."}
+                </td>
+              </tr>
+            ) : (
+              shown.map((d) => (
+                <tr key={d.id} className="group border-b border-line-soft last:border-0 hover:bg-raise/50">
+                  <td className="px-4 py-2.5">
+                    <button onClick={() => onOpen(d.id)} className="flex items-center gap-2 text-left">
+                      <Mark className="size-3.5 shrink-0 text-neon" />
+                      <span className="font-medium group-hover:underline">{d.name}</span>
+                      {d.parent_id ? <Badge>Branch</Badge> : <Badge tone="accent">Primary</Badge>}
+                    </button>
+                  </td>
+                  <td className="px-4 py-2.5 text-dim">Linode EU (Amsterdam)</td>
+                  <td className="px-4 py-2.5 text-dim">{ago(d.created_at)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="inline-flex items-center gap-2 text-dim">
+                      <Dot state={d.status === "ready" ? d.state : d.status} />
+                      {d.status === "ready" ? d.state : d.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-dim">{d.connections}</td>
+                  <td className="px-4 py-2.5 text-dim">{branchesOf(d.id)}</td>
+                  <td className="px-2 py-2.5">
+                    <RowMenu
+                      items={[
+                        { label: "Open", onClick: () => onOpen(d.id) },
+                        { label: "Copy connection string", onClick: () => navigator.clipboard.writeText(d.connection_uri) },
+                        {
+                          label: "Create branch",
+                          onClick: () => {
+                            const name = prompt("Branch name");
+                            if (name) act(() => api.branch(d.id, name));
+                          },
+                        },
+                        {
+                          label: "Reset password",
+                          onClick: () =>
+                            act(async () => {
+                              const r = await api.resetPassword(d.id);
+                              setSecret({ title: `New password for ${d.name}`, uri: r.connection_uri });
+                            }),
+                        },
+                        {
+                          label: "Delete",
+                          danger: true,
+                          onClick: () => {
+                            if (confirm(`Delete ${d.name} and its history in R2?`)) act(() => api.deleteDatabase(d.id));
+                          },
+                        },
+                      ]}
+                    />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        <div className="flex items-center gap-3 border-t border-line px-4 py-2.5 text-[12px] text-dim">
+          <span>Items per page: {PER_PAGE}</span>
+          <div className="ml-auto flex items-center gap-1">
+            <span className="mr-2 text-faint">
+              {filtered.length === 0 ? "0" : `${page * PER_PAGE + 1} – ${Math.min(filtered.length, (page + 1) * PER_PAGE)}`} of{" "}
+              {filtered.length}
+            </span>
+            <PageBtn onClick={() => setPage(0)} disabled={page === 0}>
+              «
+            </PageBtn>
+            <PageBtn onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
+              ‹
+            </PageBtn>
+            <PageBtn onClick={() => setPage((p) => Math.min(pages - 1, p + 1))} disabled={page >= pages - 1}>
+              ›
+            </PageBtn>
+          </div>
+        </div>
+      </Card>
+
+      <div className="mt-8 flex items-center justify-center gap-3 text-xs text-faint">
+        <span>Connect with psql:</span>
+        <code className="rounded-md border border-line bg-panel px-2.5 py-1.5 font-mono text-dim">
+          psql "postgresql://…@&lt;id&gt;.pg.barua.tz/app?sslmode=require"
+        </code>
+      </div>
 
       <CreateDialog
         open={creating}
@@ -109,15 +202,13 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
       />
 
       <Modal open={!!secret} onClose={() => setSecret(null)} title={secret?.title ?? ""}>
-        <p className="mb-3 text-[13px] text-mute-400">
-          Copy this now. The password is not shown again, though you can always reset it.
+        <p className="mb-3 text-[13px] text-dim">
+          Copy this now. The password is not shown again, though you can reset it whenever you like.
         </p>
-        <div className="overflow-auto whitespace-nowrap rounded-md border border-ink-700 bg-ink-950 px-3 py-2.5 font-mono text-xs text-mute-400">
-          {secret?.uri}
-        </div>
+        <CopyField value={secret?.uri ?? ""} />
         <div className="mt-4 flex gap-2">
           <Button
-            variant="primary"
+            variant="accent"
             onClick={() => {
               navigator.clipboard.writeText(secret?.uri ?? "");
               setSecret(null);
@@ -128,9 +219,22 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
           <Button onClick={() => setSecret(null)}>Close</Button>
         </div>
       </Modal>
-    </>
+    </div>
   );
 }
+
+const PageBtn = ({ children, onClick, disabled }: { children: string; onClick: () => void; disabled: boolean }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={cx(
+      "rounded border border-line px-2 py-0.5",
+      disabled ? "text-faint/40" : "text-dim hover:bg-raise hover:text-text",
+    )}
+  >
+    {children}
+  </button>
+);
 
 function CreateDialog({
   open,
@@ -169,12 +273,12 @@ function CreateDialog({
         }}
       >
         <TextField label="Name" value={name} onChange={setName} placeholder="shop" autoFocus />
-        <p className="mb-4 text-[13px] text-mute-500">
-          Postgres 16, asleep after five idle minutes, awake again on the next connection.
-        </p>
+        <div className="mb-4 rounded-md border border-line bg-base px-3 py-2.5 text-xs text-dim">
+          Postgres 16 · Linode EU (Amsterdam) · sleeps after 5 idle minutes
+        </div>
         <div className="flex gap-2">
-          <Button type="submit" variant="primary" disabled={busy}>
-            {busy ? "Creating…" : "Create"}
+          <Button type="submit" variant="accent" disabled={busy}>
+            {busy ? "Creating…" : "Create database"}
           </Button>
           <Button onClick={onClose}>Cancel</Button>
         </div>

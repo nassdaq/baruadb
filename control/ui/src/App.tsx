@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, type Me } from "./api";
-import { Button, Card, cx, ErrorNote, TextField } from "./components";
-import { Databases } from "./Databases";
-import { DatabaseDetail } from "./Database";
+import { api, ApiError, type Database, type Me } from "./api";
 import { Admin } from "./Admin";
+import { Button, Card, CopyField, ErrorNote, Modal, TextField } from "./components";
+import { DatabaseSidebar, DatabaseView, type Section } from "./Database";
+import { Databases } from "./Databases";
+import { Mark, NavGroup, NavLink, Shell } from "./Shell";
+import { Palette, usePaletteShortcut } from "./Palette";
 
-/** Routing, the whole of it: the path is the state. */
+/** Routing: the path is the state. /databases/<id>/<section> or /admin. */
 function usePath(): [string, (to: string) => void] {
   const [path, setPath] = useState(location.pathname);
   useEffect(() => {
@@ -21,70 +23,122 @@ function usePath(): [string, (to: string) => void] {
 }
 
 export default function App() {
-  const [me, setMe] = useState<Me | null | undefined>(undefined); // undefined = still asking
+  const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [path, go] = usePath();
+  const [db, setDb] = useState<Database | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [all, setAll] = useState<Database[]>([]);
+
+  usePaletteShortcut(useCallback(() => setPaletteOpen(true), []));
 
   useEffect(() => {
     api.me().then((r) => setMe(r.user)).catch(() => setMe(null));
   }, []);
 
+  // The palette searches whatever you own, wherever you are.
+  useEffect(() => {
+    if (!me) return;
+    api.databases().then(setAll).catch(() => setAll([]));
+  }, [me, path]);
+
+  const match = path.match(/^\/databases\/([\w-]+)(?:\/(\w+))?/);
+  const dbId = match?.[1];
+  const section = (match?.[2] as Section) ?? "overview";
+
+  const signedIn = me?.id;
+  const loadDb = useCallback(() => {
+    if (!dbId || !signedIn) return setDb(null);
+    api.database(dbId).then(setDb).catch(() => setDb(null));
+  }, [dbId, signedIn]);
+
+  useEffect(() => {
+    // Depends on the session too: landing on /databases/<id> while signed out
+    // 401s, and without this the page would sit on "Loading" after signing in.
+    loadDb();
+    if (!dbId || !signedIn) return;
+    // A database wakes and sleeps underneath us; keep the header truthful.
+    const t = setInterval(loadDb, 10_000);
+    return () => clearInterval(t);
+  }, [dbId, signedIn, loadDb]);
+
   if (me === undefined) {
-    return <div className="grid h-full place-items-center text-[13px] text-mute-500">loading…</div>;
+    return <div className="grid h-full place-items-center text-[13px] text-faint">Loading…</div>;
   }
   if (me === null) return <SignIn onSignedIn={setMe} />;
 
-  const dbMatch = path.match(/^\/databases\/([\w-]+)/);
-  const tab = path.startsWith("/admin") ? "admin" : "databases";
+  const signOut = async () => {
+    await api.signOut();
+    setMe(null);
+    go("/");
+  };
 
-  return (
-    <div className="min-h-full">
-      <nav className="flex h-[52px] items-center gap-7 border-b border-ink-700 bg-ink-900 px-5">
-        <button onClick={() => go("/")} className="font-semibold tracking-tight">
-          Barua<span className="font-normal text-mute-400">DB</span>
-        </button>
-        <button
-          onClick={() => go("/")}
-          className={cx(
-            "border-b-2 py-1 text-[13px]",
-            tab === "databases" ? "border-paper text-paper" : "border-transparent text-mute-400",
-          )}
+  // ---- inside a database
+  if (dbId && db) {
+    return (
+      <>
+        <Shell
+          me={me}
+          onSignOut={signOut}
+          onSearch={() => setPaletteOpen(true)}
+          sidebar={
+            <DatabaseSidebar
+              db={db}
+              section={section}
+              onSection={(s) => go(`/databases/${db.id}/${s}`)}
+              onBack={() => go("/")}
+              onConnect={() => setConnectOpen(true)}
+            />
+          }
         >
-          Databases
-        </button>
-        {me.is_admin && (
-          <button
-            onClick={() => go("/admin")}
-            className={cx(
-              "border-b-2 py-1 text-[13px]",
-              tab === "admin" ? "border-paper text-paper" : "border-transparent text-mute-400",
-            )}
-          >
-            Admin
-          </button>
-        )}
-        <div className="ml-auto flex items-center gap-3 text-xs text-mute-500">
-          <span>{me.email}</span>
-          <Button
-            onClick={async () => {
-              await api.signOut();
-              setMe(null);
-            }}
-          >
-            Sign out
-          </Button>
-        </div>
-      </nav>
+          <DatabaseView db={db} section={section} reload={loadDb} onBack={() => go("/")} />
+        </Shell>
+        <Modal open={connectOpen} onClose={() => setConnectOpen(false)} title={`Connect to ${db.name}`}>
+          <div className="mb-2 text-[12px] text-dim">Connection string</div>
+          <CopyField value={db.connection_uri} />
+          <div className="mb-2 mt-4 text-[12px] text-dim">psql</div>
+          <CopyField value={`psql "${db.connection_uri}"`} />
+          <div className="mb-2 mt-4 text-[12px] text-dim">Node (pg)</div>
+          <CopyField value={`new pg.Pool({ connectionString: "${db.connection_uri}" })`} />
+          <p className="mt-4 text-xs text-faint">
+            Substitute the password you were shown at creation. Lost it? Reset the password from the databases list.
+          </p>
+        </Modal>
+        <Palette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          databases={all}
+          current={db}
+          go={go}
+        />
+      </>
+    );
+  }
 
-      <main className="mx-auto max-w-[1000px] px-5 pb-20 pt-7">
-        {dbMatch ? (
-          <DatabaseDetail id={dbMatch[1]} onBack={() => go("/")} />
-        ) : tab === "admin" ? (
-          <Admin />
-        ) : (
-          <Databases me={me} onOpen={(id) => go(`/databases/${id}`)} />
-        )}
-      </main>
-    </div>
+  // ---- the list, or admin
+  const onAdmin = path.startsWith("/admin");
+  return (
+    <Shell
+      me={me}
+      onSignOut={signOut}
+      onSearch={() => setPaletteOpen(true)}
+      sidebar={
+        <NavGroup title="Organization">
+          <NavLink label="Databases" active={!onAdmin} onClick={() => go("/")} />
+          {me.is_admin && <NavLink label="Admin" active={onAdmin} onClick={() => go("/admin")} />}
+        </NavGroup>
+      }
+      footer={<div className="truncate text-[11px] text-faint">Serverless Postgres</div>}
+    >
+      {dbId && !db ? (
+        <div className="p-8 text-[13px] text-faint">Loading database…</div>
+      ) : onAdmin ? (
+        <Admin />
+      ) : (
+        <Databases me={me} onOpen={(id) => go(`/databases/${id}/overview`)} />
+      )}
+      <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} databases={all} current={null} go={go} />
+    </Shell>
   );
 }
 
@@ -113,43 +167,47 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
 
   return (
     <div className="grid h-full place-items-center px-5">
-      <Card className="w-full max-w-sm p-6">
-        <h1 className="text-[19px] font-semibold">
-          Barua<span className="font-normal text-mute-400">DB</span>
-        </h1>
-        <p className="mb-5 mt-1 text-[13px] text-mute-400">
-          {mode === "in" ? "Sign in to your databases." : "Create an account. You get three databases to start."}
-        </p>
-        {error && <ErrorNote>{error}</ErrorNote>}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          {mode === "up" && <TextField label="Name" value={name} onChange={setName} placeholder="optional" />}
-          <TextField label="Email" value={email} onChange={setEmail} type="email" autoFocus />
-          <TextField
-            label="Password"
-            value={password}
-            onChange={setPassword}
-            type="password"
-            placeholder={mode === "up" ? "at least 10 characters" : ""}
-          />
-          <Button type="submit" variant="primary" disabled={busy} className="mt-1 w-full justify-center">
-            {busy ? "…" : mode === "in" ? "Sign in" : "Create account"}
-          </Button>
-        </form>
-        <button
-          onClick={() => {
-            setMode(mode === "in" ? "up" : "in");
-            setError("");
-          }}
-          className="mt-4 text-[13px] text-mute-400 hover:text-paper"
-        >
-          {mode === "in" ? "No account? Create one" : "Already have an account? Sign in"}
-        </button>
-      </Card>
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex items-center gap-2 text-[17px] font-semibold tracking-tight">
+          <Mark className="size-5 text-neon" />
+          BARUA
+        </div>
+        <Card className="p-6">
+          <h1 className="text-[17px] font-semibold">{mode === "in" ? "Sign in" : "Create an account"}</h1>
+          <p className="mb-5 mt-1 text-[13px] text-dim">
+            {mode === "in" ? "Postgres that scales to zero." : "Three databases to start, free while they sleep."}
+          </p>
+          {error && <ErrorNote>{error}</ErrorNote>}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
+            }}
+          >
+            {mode === "up" && <TextField label="Name" value={name} onChange={setName} placeholder="optional" />}
+            <TextField label="Email" value={email} onChange={setEmail} type="email" autoFocus />
+            <TextField
+              label="Password"
+              value={password}
+              onChange={setPassword}
+              type="password"
+              placeholder={mode === "up" ? "at least 10 characters" : ""}
+            />
+            <Button type="submit" variant="accent" disabled={busy} className="mt-1 w-full justify-center">
+              {busy ? "…" : mode === "in" ? "Sign in" : "Create account"}
+            </Button>
+          </form>
+          <button
+            onClick={() => {
+              setMode(mode === "in" ? "up" : "in");
+              setError("");
+            }}
+            className="mt-4 text-[13px] text-dim hover:text-text"
+          >
+            {mode === "in" ? "No account? Create one" : "Already have an account? Sign in"}
+          </button>
+        </Card>
+      </div>
     </div>
   );
 }

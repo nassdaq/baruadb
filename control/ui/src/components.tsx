@@ -1,5 +1,5 @@
-// Shared pieces, all built on Headless UI so the keyboard and screen-reader
-// behaviour comes from a library rather than from us guessing.
+// Console furniture: the small pieces every screen reuses. Behaviour comes
+// from Headless UI, looks from Tailwind.
 import {
   Button as HButton,
   Dialog,
@@ -18,10 +18,10 @@ import {
   MenuItems,
   Transition,
 } from "@headlessui/react";
-import { CheckIcon, ChevronDownIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, ChevronDownIcon, EllipsisVerticalIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Fragment, type ReactNode } from "react";
 
-export const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
+export const cx = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(" ");
 
 // ---------------------------------------------------------------- button
 
@@ -29,24 +29,27 @@ type ButtonProps = {
   children: ReactNode;
   onClick?: () => void;
   type?: "button" | "submit";
-  variant?: "default" | "primary" | "danger";
+  variant?: "default" | "primary" | "accent" | "danger" | "ghost";
+  size?: "sm" | "md";
   disabled?: boolean;
   className?: string;
+  title?: string;
 };
 
-export function Button({ children, variant = "default", className, ...rest }: ButtonProps) {
+export function Button({ children, variant = "default", size = "md", className, ...rest }: ButtonProps) {
   return (
     <HButton
       {...rest}
       className={cx(
-        "inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-[13px] transition",
-        "data-disabled:cursor-default data-disabled:opacity-45",
-        "data-focus:outline-none data-focus:ring-1 data-focus:ring-ink-500",
-        variant === "primary"
-          ? "border-live/40 text-paper data-hover:bg-live/10"
-          : variant === "danger"
-            ? "border-ink-600 text-paper data-hover:border-bad/50 data-hover:text-bad"
-            : "border-ink-600 text-paper data-hover:border-ink-500 data-hover:bg-ink-800",
+        "inline-flex items-center gap-1.5 rounded-md border font-medium transition",
+        size === "sm" ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-[13px]",
+        "data-disabled:cursor-default data-disabled:opacity-40",
+        "data-focus:outline-none data-focus:ring-1 data-focus:ring-edge",
+        variant === "primary" && "border-transparent bg-text text-base data-hover:bg-white",
+        variant === "accent" && "border-neon/40 bg-neon/10 text-neon data-hover:bg-neon/15",
+        variant === "danger" && "border-line text-text data-hover:border-rose/50 data-hover:text-rose",
+        variant === "ghost" && "border-transparent text-dim data-hover:bg-raise data-hover:text-text",
+        variant === "default" && "border-line bg-panel text-text data-hover:border-edge data-hover:bg-raise",
         className,
       )}
     >
@@ -55,46 +58,190 @@ export function Button({ children, variant = "default", className, ...rest }: Bu
   );
 }
 
-// ---------------------------------------------------------------- status dot
+// ---------------------------------------------------------------- status
 
 const TONE: Record<string, string> = {
-  awake: "bg-live shadow-[0_0_8px_--theme(--color-live)]",
-  asleep: "bg-mute-500",
-  cold: "bg-cold",
-  failed: "bg-bad",
-  creating: "bg-warn",
-  online: "bg-live shadow-[0_0_8px_--theme(--color-live)]",
-  offline: "bg-bad",
+  awake: "bg-neon shadow-[0_0_6px_--theme(--color-neon)]",
+  online: "bg-neon shadow-[0_0_6px_--theme(--color-neon)]",
+  asleep: "bg-faint",
+  cold: "bg-sky",
+  creating: "bg-amber",
+  failed: "bg-rose",
+  offline: "bg-rose",
 };
 
-export function Dot({ state }: { state: string }) {
-  return <span className={cx("size-[7px] shrink-0 rounded-full", TONE[state] ?? "bg-mute-500")} />;
-}
+export const Dot = ({ state }: { state: string }) => (
+  <span className={cx("size-[6px] shrink-0 rounded-full", TONE[state] ?? "bg-faint")} />
+);
 
-export function StatusPill({ state }: { state: string }) {
+export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "accent" }) {
   return (
-    <span className="inline-flex items-center gap-2 text-xs text-mute-400">
-      <Dot state={state} />
-      {state}
+    <span
+      className={cx(
+        "rounded border px-1.5 py-px text-[11px] font-medium",
+        tone === "accent" ? "border-neon/30 bg-neon/10 text-neon" : "border-line bg-raise text-dim",
+      )}
+    >
+      {children}
     </span>
   );
 }
 
-// ---------------------------------------------------------------- metric
+// ---------------------------------------------------------------- surfaces
 
-export function Metric({ label, value, tone }: { label: string; value: ReactNode; tone?: "live" | "plain" }) {
+export const Card = ({ children, className }: { children: ReactNode; className?: string }) => (
+  <div className={cx("rounded-lg border border-line bg-panel", className)}>{children}</div>
+);
+
+export function Stat({ label, value, unit, hint }: { label: string; value: ReactNode; unit?: string; hint?: string }) {
   return (
-    <div>
-      <div className="text-[11px] uppercase tracking-[0.06em] text-mute-500">{label}</div>
-      <div className={cx("mt-1 text-[13px]", tone === "plain" ? "text-paper" : "text-live")}>{value}</div>
+    <div className="min-w-[140px] flex-1">
+      <div className="flex items-center gap-1 text-[12px] text-dim" title={hint}>
+        {label}
+        {hint && <span className="text-faint">ⓘ</span>}
+      </div>
+      <div className="mt-1.5 text-[21px] font-medium tracking-tight">
+        {value}
+        {unit && <span className="ml-1 text-[13px] font-normal text-dim">{unit}</span>}
+      </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------- card
+// ---------------------------------------------------------------- inputs
 
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("rounded-[10px] border border-ink-700 bg-ink-900", className)}>{children}</div>;
+export function SearchBox({
+  value,
+  onChange,
+  placeholder = "Search...",
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <div className={cx("relative", className)}>
+      <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-faint" />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-md border border-line bg-panel py-2 pl-9 pr-3 text-[13px] text-text placeholder:text-faint focus:border-edge focus:outline-none"
+      />
+    </div>
+  );
+}
+
+export function TextField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  autoFocus,
+  mono,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  autoFocus?: boolean;
+  mono?: boolean;
+}) {
+  return (
+    <Field className="mb-3">
+      <Label className="mb-1.5 block text-[12px] text-dim">{label}</Label>
+      <Input
+        type={type}
+        value={value}
+        autoFocus={autoFocus}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className={cx(
+          "w-full rounded-md border border-line bg-base px-3 py-2 text-[13px] text-text",
+          "placeholder:text-faint data-focus:border-edge data-focus:outline-none",
+          mono && "font-mono",
+        )}
+      />
+    </Field>
+  );
+}
+
+export function Select<T extends string>({
+  value,
+  onChange,
+  options,
+  icon,
+  className,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: T[];
+  icon?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Listbox value={value} onChange={onChange}>
+      <ListboxButton
+        className={cx(
+          "flex w-full items-center gap-2 rounded-md border border-line bg-panel px-2.5 py-1.5 text-[13px] data-hover:bg-raise",
+          className,
+        )}
+      >
+        {icon}
+        <span className="truncate">{value}</span>
+        <ChevronDownIcon className="ml-auto size-4 shrink-0 text-faint" />
+      </ListboxButton>
+      <ListboxOptions
+        anchor="bottom start"
+        className="z-50 mt-1 max-h-80 w-[--button-width] min-w-48 overflow-auto rounded-md border border-line bg-panel p-1 text-[13px] shadow-2xl focus:outline-none"
+      >
+        {options.map((o) => (
+          <ListboxOption
+            key={o}
+            value={o}
+            className="flex cursor-pointer items-center justify-between gap-2 rounded px-2.5 py-1.5 text-dim data-focus:bg-raise data-focus:text-text"
+          >
+            <span className="truncate">{o}</span>
+            {o === value && <CheckIcon className="size-4 shrink-0 text-neon" />}
+          </ListboxOption>
+        ))}
+      </ListboxOptions>
+    </Listbox>
+  );
+}
+
+// ---------------------------------------------------------------- menus
+
+export function RowMenu({ items }: { items: { label: string; onClick: () => void; danger?: boolean }[] }) {
+  return (
+    <Menu>
+      <MenuButton className="rounded p-1 text-faint data-hover:bg-raise data-hover:text-text">
+        <EllipsisVerticalIcon className="size-4" />
+      </MenuButton>
+      <MenuItems
+        anchor="bottom end"
+        className="z-50 w-48 rounded-md border border-line bg-panel p-1 text-[13px] shadow-2xl focus:outline-none"
+      >
+        {items.map((it) => (
+          <MenuItem key={it.label}>
+            <button
+              onClick={it.onClick}
+              className={cx(
+                "block w-full rounded px-2.5 py-1.5 text-left",
+                it.danger ? "text-rose/90 data-focus:bg-rose/10" : "text-dim data-focus:bg-raise data-focus:text-text",
+              )}
+            >
+              {it.label}
+            </button>
+          </MenuItem>
+        ))}
+      </MenuItems>
+    </Menu>
+  );
 }
 
 // ---------------------------------------------------------------- modal
@@ -122,9 +269,9 @@ export function Modal({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/60" aria-hidden="true" />
+          <div className="fixed inset-0 bg-black/70" aria-hidden="true" />
         </Transition.Child>
-        <div className="fixed inset-0 flex items-center justify-center p-4">
+        <div className="fixed inset-0 flex items-start justify-center overflow-y-auto p-4 pt-[12vh]">
           <Transition.Child
             as={Fragment}
             enter="duration-150 ease-out"
@@ -134,7 +281,7 @@ export function Modal({
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <DialogPanel className="w-full max-w-md rounded-xl border border-ink-700 bg-ink-900 p-5">
+            <DialogPanel className="w-full max-w-md rounded-xl border border-line bg-panel p-5 shadow-2xl">
               <DialogTitle className="text-[15px] font-medium">{title}</DialogTitle>
               <div className="mt-4">{children}</div>
             </DialogPanel>
@@ -145,132 +292,40 @@ export function Modal({
   );
 }
 
-// ---------------------------------------------------------------- text field
-
-export function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  autoFocus,
-  mono,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  placeholder?: string;
-  autoFocus?: boolean;
-  mono?: boolean;
-}) {
-  return (
-    <Field className="mb-3">
-      <Label className="mb-1.5 block text-[11px] uppercase tracking-[0.06em] text-mute-500">{label}</Label>
-      <Input
-        type={type}
-        value={value}
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className={cx(
-          "w-full rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-[13px] text-paper",
-          "placeholder:text-mute-500 data-focus:border-ink-500 data-focus:outline-none",
-          mono && "font-mono",
-        )}
-      />
-    </Field>
-  );
-}
-
-// ---------------------------------------------------------------- select
-
-export function Select<T extends string>({
-  value,
-  onChange,
-  options,
-  label,
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: T[];
-  label?: string;
-}) {
-  return (
-    <Listbox value={value} onChange={onChange}>
-      <div className="relative">
-        <ListboxButton className="flex items-center gap-2 rounded-md border border-ink-600 px-3 py-1.5 text-[13px] data-hover:bg-ink-800">
-          {label && <span className="text-mute-500">{label}</span>}
-          {value}
-          <ChevronDownIcon className="size-4 text-mute-500" />
-        </ListboxButton>
-        <ListboxOptions
-          anchor="bottom start"
-          className="z-50 mt-1 max-h-72 w-52 overflow-auto rounded-md border border-ink-700 bg-ink-900 p-1 text-[13px] shadow-xl focus:outline-none"
-        >
-          {options.map((o) => (
-            <ListboxOption
-              key={o}
-              value={o}
-              className="flex cursor-pointer items-center justify-between rounded px-2.5 py-1.5 text-mute-400 data-focus:bg-ink-800 data-focus:text-paper"
-            >
-              <span className="truncate">{o}</span>
-              {o === value && <CheckIcon className="size-4 text-live" />}
-            </ListboxOption>
-          ))}
-        </ListboxOptions>
-      </div>
-    </Listbox>
-  );
-}
-
-// ---------------------------------------------------------------- row menu
-
-export function RowMenu({ items }: { items: { label: string; onClick: () => void; danger?: boolean }[] }) {
-  return (
-    <Menu>
-      <MenuButton className="rounded-md border border-ink-600 p-1.5 data-hover:bg-ink-800">
-        <EllipsisHorizontalIcon className="size-4 text-mute-400" />
-      </MenuButton>
-      <MenuItems
-        anchor="bottom end"
-        className="z-50 mt-1 w-48 rounded-md border border-ink-700 bg-ink-900 p-1 text-[13px] shadow-xl focus:outline-none"
-      >
-        {items.map((it) => (
-          <MenuItem key={it.label}>
-            <button
-              onClick={it.onClick}
-              className={cx(
-                "block w-full rounded px-2.5 py-1.5 text-left",
-                it.danger ? "text-bad/90 data-focus:bg-bad/10" : "text-mute-400 data-focus:bg-ink-800 data-focus:text-paper",
-              )}
-            >
-              {it.label}
-            </button>
-          </MenuItem>
-        ))}
-      </MenuItems>
-    </Menu>
-  );
-}
-
 // ---------------------------------------------------------------- misc
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="py-12 text-center text-[13px] text-mute-500">{children}</div>;
-}
+export const Empty = ({ children }: { children: ReactNode }) => (
+  <div className="py-14 text-center text-[13px] text-faint">{children}</div>
+);
 
-export function ErrorNote({ children }: { children: ReactNode }) {
+export const ErrorNote = ({ children }: { children: ReactNode }) => (
+  <div className="my-3 rounded-md border border-rose/30 bg-rose/5 px-3 py-2 text-[13px] text-rose/90">{children}</div>
+);
+
+export function CopyField({ value }: { value: string }) {
   return (
-    <div className="my-3 rounded-md border border-bad/30 bg-bad/5 px-3 py-2 text-[13px] text-bad/90">{children}</div>
+    <div className="flex items-stretch overflow-hidden rounded-md border border-line bg-base">
+      <code className="flex-1 overflow-x-auto whitespace-nowrap px-3 py-2.5 font-mono text-xs text-dim">{value}</code>
+      <button
+        onClick={() => navigator.clipboard.writeText(value)}
+        className="border-l border-line px-3 text-xs text-dim hover:bg-raise hover:text-text"
+        title="Copy"
+      >
+        ⧉
+      </button>
+    </div>
   );
 }
 
 export function ago(iso: string | null): string {
   if (!iso) return "—";
   const s = (Date.now() - Date.parse(iso)) / 1000;
-  if (s < 60) return `${Math.floor(s)}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+  if (s < 45) return "A few seconds ago";
+  if (s < 90) return "A minute ago";
+  if (s < 3600) return `${Math.floor(s / 60)} minutes ago`;
+  if (s < 7200) return "An hour ago";
+  if (s < 86400) return `${Math.floor(s / 3600)} hours ago`;
+  if (s < 172800) return "A day ago";
+  if (s < 2592000) return `${Math.floor(s / 86400)} days ago`;
+  return `${Math.floor(s / 2592000)} months ago`;
 }

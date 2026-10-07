@@ -8,7 +8,7 @@ routes = [{ pattern = "pgapi.barua.tz", custom_domain = true }]
 [[d1_databases]]
 binding = "DB"
 database_name = "barua"
-database_id = "REPLACE_WITH_D1_DATABASE_ID" # wrangler d1 create barua
+database_id = "a2a6b339-27c8-4b02-9651-9b01e9432f06"
 
 [triggers]
 crons = ["*/2 * * * *"] # mark silent boxes offline

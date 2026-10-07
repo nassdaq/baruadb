@@ -381,6 +381,43 @@ function TablesConsole({ db }: { db: Database }) {
     loadRows(name, 0, null);
   };
 
+  const meta = columns?.rows ?? [];
+  const pk = meta.filter((c) => c[4] === "t").map((c) => c[0]!);
+  const isView = (tables.find((t) => t.name === table)?.kind ?? "table") !== "table";
+  const editPlan: EditPlan | null =
+    table && pk.length > 0 && !isView
+      ? {
+          pk,
+          readOnly: new Set(meta.filter((c) => c[5] === "t").map((c) => c[0]!)),
+          nullable: new Set(meta.filter((c) => c[2] !== "t").map((c) => c[0]!)),
+          save: async (row, column, value) => {
+            const at = (name: string) => rows!.columns.indexOf(name);
+            const where = pk
+              .map((k) => {
+                const v = row[at(k)];
+                if (v === null) throw new Error(`cannot edit a row whose ${k} is null`);
+                return `${ident(k)} = ${literal(v)}`;
+              })
+              .join(" and ");
+            const set = value === null ? "null" : literal(value);
+            const r = await run(
+              `update ${ident(schema)}.${ident(table)} set ${ident(column)} = ${set} where ${where}`,
+              1,
+            );
+            if (r.rows_affected === 0) throw new Error("no row matched; it may have been deleted");
+            await loadRows(table, page, sort);
+          },
+        }
+      : null;
+
+  const whyReadOnly = !table
+    ? null
+    : isView
+      ? "This is a view. Edit the tables underneath it."
+      : pk.length === 0
+        ? "This table has no primary key, so a row cannot be identified safely. Add one to edit here."
+        : null;
+
   const estimated = tables.find((t) => t.name === table)?.rows;
   const visible = tables.filter((t) => t.name.toLowerCase().includes(filter.toLowerCase()));
 
@@ -452,6 +489,13 @@ function TablesConsole({ db }: { db: Database }) {
                   sorted by {sort.col} {sort.dir}
                 </Badge>
               )}
+              {whyReadOnly ? (
+                <span className="text-[11px] text-faint" title={whyReadOnly}>
+                  read only
+                </span>
+              ) : (
+                <span className="text-[11px] text-faint">double-click a cell to edit</span>
+              )}
               <div className="ml-auto flex items-center gap-3 text-[12px] text-dim">
                 {rows && <span className="text-faint">{rows.ms} ms</span>}
                 <span>
@@ -494,6 +538,7 @@ function TablesConsole({ db }: { db: Database }) {
                   <Grid
                     result={rows}
                     types={columnTypes(columns)}
+                    edit={editPlan}
                     sort={sort}
                     onSort={(col) => {
                       const next: typeof sort =
@@ -530,6 +575,15 @@ function TablesConsole({ db }: { db: Database }) {
     </div>
   );
 }
+
+type EditPlan = {
+  /** Columns that identify a row. Without them an UPDATE could hit many rows. */
+  pk: string[];
+  /** Columns Postgres computes; writing them is an error. */
+  readOnly: Set<string>;
+  nullable: Set<string>;
+  save: (row: (string | null)[], column: string, value: string | null) => Promise<void>;
+};
 
 const columnTypes = (columns: QueryResult | null): Record<string, string> =>
   Object.fromEntries((columns?.rows ?? []).map((c) => [c[0]!, c[1]!]));
@@ -691,14 +745,18 @@ function Grid({
   types,
   sort,
   onSort,
+  edit,
   flush,
 }: {
   result: QueryResult;
   types?: Record<string, string>;
   sort?: { col: string; dir: "asc" | "desc" } | null;
   onSort?: (col: string) => void;
+  edit?: EditPlan | null;
   flush?: boolean;
 }) {
+  const [editing, setEditing] = useState<{ row: number; col: string } | null>(null);
+  const [error, setError] = useState("");
   if (result.columns.length === 0) {
     return (
       <div className={cx("text-[13px] text-dim", flush ? "p-4" : "")}>
@@ -733,15 +791,44 @@ function Grid({
             <td className="border-b border-r border-line-soft px-2 py-1.5 text-center text-[11px] text-faint group-hover:bg-raise/40">
               {i + 1}
             </td>
-            {row.map((cell, j) => (
-              <td
-                key={j}
-                className="max-w-[320px] truncate border-b border-r border-line-soft px-3 py-1.5 font-mono text-[12px] text-dim last:border-r-0 group-hover:bg-raise/40"
-                title={cell ?? "null"}
-              >
-                {cell === null ? <span className="text-faint italic">NULL</span> : cell}
-              </td>
-            ))}
+            {row.map((cell, j) => {
+              const col = result.columns[j]!;
+              const writable = Boolean(edit) && !edit!.readOnly.has(col);
+              const active = editing?.row === i && editing.col === col;
+              return (
+                <td
+                  key={j}
+                  onDoubleClick={() => writable && setEditing({ row: i, col })}
+                  className={cx(
+                    "max-w-[320px] border-b border-r border-line-soft px-3 py-1.5 font-mono text-[12px] text-dim last:border-r-0",
+                    active ? "bg-raise p-0" : "truncate group-hover:bg-raise/40",
+                    writable && !active && "cursor-text",
+                  )}
+                  title={writable ? (cell ?? "null") : edit ? `${col} is generated by the database` : (cell ?? "null")}
+                >
+                  {active ? (
+                    <CellEditor
+                      initial={cell}
+                      nullable={edit!.nullable.has(col)}
+                      onCancel={() => setEditing(null)}
+                      onSave={async (value) => {
+                        setError("");
+                        try {
+                          await edit!.save(row, col, value);
+                          setEditing(null);
+                        } catch (e) {
+                          setError(e instanceof ApiError ? e.message : String((e as Error).message ?? e));
+                        }
+                      }}
+                    />
+                  ) : cell === null ? (
+                    <span className="text-faint italic">NULL</span>
+                  ) : (
+                    cell
+                  )}
+                </td>
+              );
+            })}
           </tr>
         ))}
       </tbody>
@@ -750,6 +837,9 @@ function Grid({
 
   return (
     <>
+      {error && (
+        <div className="sticky left-0 border-t border-line bg-rose/5 px-4 py-2 text-xs text-rose/90">{error}</div>
+      )}
       {flush ? body : <Card className="overflow-x-auto">{body}</Card>}
       {result.truncated && (
         <div className="border-t border-line px-4 py-2 text-xs text-amber">
@@ -757,5 +847,60 @@ function Grid({
         </div>
       )}
     </>
+  );
+}
+
+
+/** One cell, open for editing. Enter saves, Escape cancels, ∅ writes NULL.
+ *  Typing "NULL" is deliberately not special: a text column may hold that word. */
+function CellEditor({
+  initial,
+  nullable,
+  onSave,
+  onCancel,
+}: {
+  initial: string | null;
+  nullable: boolean;
+  onSave: (value: string | null) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(initial ?? "");
+  const [busy, setBusy] = useState(false);
+
+  const commit = async (v: string | null) => {
+    if (v === initial) return onCancel();
+    setBusy(true);
+    await onSave(v);
+    setBusy(false);
+  };
+
+  return (
+    <div className="flex items-center gap-1 px-1 py-0.5">
+      <input
+        autoFocus
+        value={value}
+        disabled={busy}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit(value);
+          if (e.key === "Escape") onCancel();
+        }}
+        onBlur={() => commit(value)}
+        className="w-full min-w-0 rounded border border-neon/50 bg-base px-1.5 py-1 font-mono text-[12px] text-text focus:outline-none"
+      />
+      {nullable && (
+        <button
+          onMouseDown={(e) => {
+            // mousedown, not click: blur would commit the text value first.
+            e.preventDefault();
+            commit(null);
+          }}
+          title="Set NULL"
+          className="shrink-0 rounded border border-line px-1 text-[11px] text-faint hover:text-text"
+        >
+          ∅
+        </button>
+      )}
+    </div>
   );
 }

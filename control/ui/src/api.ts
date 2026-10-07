@@ -127,7 +127,9 @@ export const CATALOG = {
            pg_catalog.format_type(a.atttypid, a.atttypmod) as type,
            a.attnotnull as not_null,
            pg_catalog.pg_get_expr(d.adbin, d.adrelid) as default_value,
-           coalesce(pk.is_pk, false) as is_primary_key
+           coalesce(pk.is_pk, false) as is_primary_key,
+           (a.attgenerated <> '') as is_generated,
+           c.relkind as relkind
       from pg_attribute a
       join pg_class c on c.oid = a.attrelid
       join pg_namespace n on n.oid = c.relnamespace

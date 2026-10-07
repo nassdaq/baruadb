@@ -106,7 +106,8 @@ aws_access_key_id = $AWS_ACCESS_KEY_ID
 aws_secret_access_key = $AWS_SECRET_ACCESS_KEY
 EOF
   umask 022
-  DNS_ARGS=(--dns-route53 --dns-route53-propagation-seconds 30)
+  # route53 waits for the change to reach INSYNC, so no propagation flag.
+  DNS_ARGS=(--dns-route53)
 fi
 mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/barua.sh <<'HOOK'
@@ -118,11 +119,14 @@ install -o barua -g barua -m 640 "$RENEWED_LINEAGE/privkey.pem" /etc/barua/tls/p
 systemctl try-restart barua
 HOOK
 chmod 755 /etc/letsencrypt/renewal-hooks/deploy/barua.sh
-# A box-specific extra name keeps each box's certificate distinct, so
-# Let's Encrypt's duplicate-certificate limit never blocks adding boxes.
+# A box-specific extra name keeps each box's certificate distinct, so Let's
+# Encrypt's duplicate-certificate limit (5 per week per identical name set)
+# never blocks adding boxes. It sits one level deeper than the wildcard:
+# *.pg.barua.tz already covers node-<box>.pg.barua.tz, and Let's Encrypt
+# rejects an order whose names are redundant with its own wildcard.
 if [[ -n "${CERT_EMAIL:-}" ]]; then ACCOUNT=(-m "$CERT_EMAIL"); else ACCOUNT=(--register-unsafely-without-email); fi
 certbot certonly -n --agree-tos "${ACCOUNT[@]}" "${DNS_ARGS[@]}" \
-  --cert-name barua -d "*.$DOMAIN" -d "node-$BOX_NAME.$DOMAIN"
+  --cert-name barua -d "*.$DOMAIN" -d "$BOX_NAME.node.$DOMAIN"
 RENEWED_LINEAGE=/etc/letsencrypt/live/barua /etc/letsencrypt/renewal-hooks/deploy/barua.sh
 
 echo "==> configuration"

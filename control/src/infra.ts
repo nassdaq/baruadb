@@ -3,6 +3,8 @@
 import { HttpError } from "./util";
 
 export interface Env {
+  /** "open" (default) or "closed" — whether strangers may create accounts. */
+  SIGNUP?: string;
   DB: D1Database;
   DB_DOMAIN: string;
   AGENT_URL_TEMPLATE: string;

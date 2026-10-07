@@ -24,6 +24,27 @@ use crate::storage::{SnapshotInfo, SnapshotKind};
 
 pub const ADMIN_ROLE: &str = "barua_admin";
 
+/// Long enough for an honest query over a slow link, short enough that a
+/// runaway one cannot hold a shared box.
+const QUERY_TIMEOUT_SECS: u32 = 15;
+
+/// Rows come back as text, exactly as the server renders them: one code path
+/// for every type, including ones no driver knows about.
+#[derive(Debug, Default, Serialize)]
+pub struct QueryResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<Option<String>>>,
+    /// True when the row cap was hit and later rows were dropped.
+    pub truncated: bool,
+    pub rows_affected: Option<u64>,
+    pub ms: u64,
+}
+
+/// Quote an identifier for interpolation into SQL, doubling any embedded quote.
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
 /// How far to replay when restoring from object storage.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -480,6 +501,59 @@ impl App {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
+    }
+
+    /// Run SQL on a customer's behalf, for the dashboard's table browser and
+    /// SQL editor.
+    ///
+    /// The agent is the only thing holding a privileged local connection, so
+    /// the alternative would be handing database passwords to a browser. It
+    /// connects as the admin over the unix socket and then drops to the
+    /// customer's own role, which means this endpoint can never read or change
+    /// anything the owner of the database could not. A statement timeout keeps
+    /// one bad query from pinning a shared box, and rows are capped so a
+    /// `SELECT *` on a large table cannot be turned into a denial of service.
+    pub async fn query(&self, id: &str, sql: &str, limit: usize) -> Result<QueryResult> {
+        use tokio_postgres::SimpleQueryMessage;
+
+        let db = self.ensure_ready(id).await?;
+        let _conn = ConnectionGuard::new(self.runtime(id));
+        let client = self.admin_client(&db, &db.database).await?;
+        client
+            .batch_execute(&format!(
+                "SET ROLE {}; SET statement_timeout = '{}s'; \
+                 SET idle_in_transaction_session_timeout = '30s';",
+                quote_ident(&db.role),
+                QUERY_TIMEOUT_SECS,
+            ))
+            .await
+            .context("preparing the session")?;
+
+        let started = std::time::Instant::now();
+        let messages = client.simple_query(sql).await?;
+        let ms = started.elapsed().as_millis() as u64;
+
+        let mut out = QueryResult { ms, ..Default::default() };
+        for message in messages {
+            match message {
+                SimpleQueryMessage::RowDescription(columns) => {
+                    out.columns = columns.iter().map(|c| c.name().to_string()).collect();
+                }
+                SimpleQueryMessage::Row(row) => {
+                    if out.columns.is_empty() {
+                        out.columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                    }
+                    if out.rows.len() >= limit {
+                        out.truncated = true;
+                        continue;
+                    }
+                    out.rows.push((0..row.len()).map(|i| row.get(i).map(str::to_string)).collect());
+                }
+                SimpleQueryMessage::CommandComplete(n) => out.rows_affected = Some(n),
+                _ => {}
+            }
+        }
+        Ok(out)
     }
 
     /// For branching "from now": everything up to the returned LSN is in

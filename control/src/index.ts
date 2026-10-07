@@ -4,6 +4,18 @@
 import { agent, Box, deleteDns, Env, upsertDns } from "./infra";
 import { UI_HTML } from "./ui";
 import {
+  createSession,
+  destroySession,
+  hashPassword,
+  readCookie,
+  SESSION_COOKIE,
+  sessionCookie,
+  User,
+  userForSession,
+  validateCredentials,
+  verifyPassword,
+} from "./auth";
+import {
   bearer,
   body,
   checkName,
@@ -21,6 +33,7 @@ interface DbRow {
   id: string;
   name: string;
   owner: string;
+  user_id: string | null;
   box_id: string;
   parent_id: string | null;
   role: string;
@@ -33,7 +46,13 @@ interface DbRow {
   created_at: string;
 }
 
-type Caller = { kind: "admin" } | { kind: "key"; id: string };
+// Three ways to arrive: the operator's admin token, a signed-in person, or an
+// API key belonging to one. A person and their keys share an owner id, so a
+// database created in the dashboard is visible to that person's keys too.
+type Caller =
+  | { kind: "admin" }
+  | { kind: "user"; id: string; isAdmin: boolean; user: User }
+  | { kind: "key"; id: string };
 
 const ONLINE_MS = 90_000;
 const isOnline = (b: Box) => b.last_seen !== null && Date.now() - Date.parse(b.last_seen) < ONLINE_MS;
@@ -41,23 +60,37 @@ const isOnline = (b: Box) => b.last_seen !== null && Date.now() - Date.parse(b.l
 // ---------------------------------------------------------------- auth
 
 async function caller(req: Request, env: Env): Promise<Caller> {
+  const cookie = readCookie(req, SESSION_COOKIE);
+  if (cookie) {
+    const user = await userForSession(env.DB, cookie);
+    if (user) return { kind: "user", id: user.id, isAdmin: user.is_admin === 1, user };
+  }
   const token = bearer(req);
-  if (!token) throw new HttpError(401, "missing Authorization: Bearer <api key>");
+  if (!token) throw new HttpError(401, "sign in, or send Authorization: Bearer <api key>");
   if (env.ADMIN_TOKEN && timingSafeEqual(token, env.ADMIN_TOKEN)) return { kind: "admin" };
   const key = await env.DB.prepare("SELECT id FROM api_keys WHERE key_hash = ?").bind(await sha256(token)).first<{ id: string }>();
   if (!key) throw new HttpError(401, "invalid API key");
   return { kind: "key", id: key.id };
 }
 
+/** Box and fleet operations: the operator's token only. */
 async function admin(req: Request, env: Env): Promise<void> {
   if ((await caller(req, env)).kind !== "admin") throw new HttpError(403, "admin token required");
+}
+
+/** The admin plane in the dashboard: the operator's token, or a user flagged
+ *  as an admin. It exposes counts, never other people's data. */
+async function staff(req: Request, env: Env): Promise<Caller> {
+  const c = await caller(req, env);
+  if (c.kind === "admin" || (c.kind === "user" && c.isAdmin)) return c;
+  throw new HttpError(403, "not allowed");
 }
 
 const ownerOf = (c: Caller) => (c.kind === "admin" ? "admin" : c.id);
 
 async function loadDb(env: Env, c: Caller, id: string): Promise<DbRow> {
   const row = await env.DB.prepare("SELECT * FROM databases WHERE id = ?").bind(id).first<DbRow>();
-  if (!row || (c.kind === "key" && row.owner !== c.id)) throw new HttpError(404, "database not found");
+  if (!row || (c.kind !== "admin" && row.owner !== c.id)) throw new HttpError(404, "database not found");
   return row;
 }
 
@@ -124,10 +157,10 @@ function dbView(env: Env, db: DbRow, c: Caller) {
 
 async function insertDb(env: Env, db: DbRow): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO databases (id, name, owner, box_id, parent_id, role, dbname, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'creating', ?)`,
+    `INSERT INTO databases (id, name, owner, user_id, box_id, parent_id, role, dbname, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'creating', ?)`,
   )
-    .bind(db.id, db.name, db.owner, db.box_id, db.parent_id, db.role, db.dbname, db.created_at)
+    .bind(db.id, db.name, db.owner, db.user_id, db.box_id, db.parent_id, db.role, db.dbname, db.created_at)
     .run();
 }
 
@@ -141,11 +174,13 @@ async function setDns(env: Env, db: DbRow, box: Box): Promise<void> {
 
 async function createDatabase(req: Request, env: Env, c: Caller): Promise<Response> {
   const b = await body<{ name?: string; role?: string; database?: string }>(req);
+  await checkQuota(env, c);
   const box = await pickBox(env);
   const db: DbRow = {
     id: newId("br-"),
     name: (b.name ?? "main").slice(0, 100),
     owner: ownerOf(c),
+    user_id: c.kind === "user" ? c.id : null,
     box_id: box.id,
     parent_id: null,
     role: checkName("role", b.role ?? "app"),
@@ -358,6 +393,100 @@ function boxView(b: Box) {
 
 // ---------------------------------------------------------------- router
 
+// ---------------------------------------------------------------- accounts
+
+/** A person may hold db_quota databases, branches included: a branch is a
+ *  whole Postgres cluster on a box, not a cheap pointer. */
+async function checkQuota(env: Env, c: Caller): Promise<void> {
+  if (c.kind !== "user") return;
+  const row = await env.DB.prepare("SELECT count(*) AS n FROM databases WHERE owner = ?")
+    .bind(c.id).first<{ n: number }>();
+  if ((row?.n ?? 0) >= c.user.db_quota) {
+    throw new HttpError(403, `database limit reached (${c.user.db_quota}); delete one or ask for more`);
+  }
+}
+
+const userView = (u: User) => ({
+  id: u.id,
+  email: u.email,
+  name: u.name,
+  is_admin: u.is_admin === 1,
+  db_quota: u.db_quota,
+  created_at: u.created_at,
+});
+
+async function signUp(req: Request, env: Env): Promise<Response> {
+  if (env.SIGNUP === "closed") throw new HttpError(403, "sign-ups are closed");
+  const b = await body<{ email?: string; password?: string; name?: string }>(req);
+  const { email, password } = validateCredentials(b.email, b.password);
+  const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+  if (existing) throw new HttpError(409, "that email already has an account");
+
+  // The first account to exist runs the place; everyone after is an ordinary user.
+  const first = await env.DB.prepare("SELECT count(*) AS n FROM users").first<{ n: number }>();
+  const user: User = {
+    id: newId("usr_"),
+    email,
+    password_hash: await hashPassword(password),
+    name: (b.name ?? "").slice(0, 100) || null,
+    is_admin: (first?.n ?? 0) === 0 ? 1 : 0,
+    db_quota: 3,
+    created_at: now(),
+    last_seen_at: now(),
+  };
+  await env.DB.prepare(
+    `INSERT INTO users (id, email, password_hash, name, is_admin, db_quota, created_at, last_seen_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(user.id, user.email, user.password_hash, user.name, user.is_admin, user.db_quota, user.created_at, user.last_seen_at).run();
+
+  const token = await createSession(env.DB, user.id, req.headers.get("User-Agent"));
+  return json({ user: userView(user) }, 201, { "Set-Cookie": sessionCookie(token) });
+}
+
+async function signIn(req: Request, env: Env): Promise<Response> {
+  const b = await body<{ email?: string; password?: string }>(req);
+  const email = String(b.email ?? "").trim().toLowerCase();
+  const user = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<User>();
+  // Same message either way: do not reveal which emails have accounts.
+  const ok = user ? await verifyPassword(String(b.password ?? ""), user.password_hash) : false;
+  if (!user || !ok) throw new HttpError(401, "wrong email or password");
+  await env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(now(), user.id).run();
+  const token = await createSession(env.DB, user.id, req.headers.get("User-Agent"));
+  return json({ user: userView(user) }, 200, { "Set-Cookie": sessionCookie(token) });
+}
+
+async function signOut(req: Request, env: Env): Promise<Response> {
+  const cookie = readCookie(req, SESSION_COOKIE);
+  if (cookie) await destroySession(env.DB, cookie);
+  return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(null) });
+}
+
+/** The admin plane: how much is being used, never whose. */
+async function adminStats(env: Env): Promise<Response> {
+  const [users, dbs, boxes] = await Promise.all([
+    env.DB.prepare("SELECT count(*) AS total, sum(is_admin) AS admins FROM users").first<{ total: number; admins: number }>(),
+    env.DB.prepare(
+      `SELECT count(*) AS total,
+              sum(CASE WHEN running = 1 THEN 1 ELSE 0 END) AS awake,
+              sum(CASE WHEN location = 'cold' THEN 1 ELSE 0 END) AS cold,
+              sum(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+              sum(connections) AS connections
+         FROM databases`).first<Record<string, number>>(),
+    env.DB.prepare("SELECT count(*) AS total, sum(databases_awake) AS awake FROM boxes").first<Record<string, number>>(),
+  ]);
+  const signups = await env.DB.prepare(
+    "SELECT date(created_at) AS day, count(*) AS n FROM users GROUP BY day ORDER BY day DESC LIMIT 30").all<{ day: string; n: number }>();
+  return json({
+    users: { total: users?.total ?? 0, admins: users?.admins ?? 0 },
+    databases: {
+      total: dbs?.total ?? 0, awake: dbs?.awake ?? 0, cold: dbs?.cold ?? 0,
+      failed: dbs?.failed ?? 0, connections: dbs?.connections ?? 0,
+    },
+    boxes: { total: boxes?.total ?? 0, databases_awake: boxes?.awake ?? 0 },
+    signups: signups.results,
+  });
+}
+
 async function route(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const parts = url.pathname.split("/").filter(Boolean); // ["v1", "databases", id, action]
@@ -370,6 +499,24 @@ async function route(req: Request, env: Env): Promise<Response> {
     throw new HttpError(404, "not found");
   }
   const [, resource, id, action] = parts;
+
+  if (resource === "auth") {
+    if (id === "signup" && m === "POST") return signUp(req, env);
+    if (id === "login" && m === "POST") return signIn(req, env);
+    if (id === "logout" && m === "POST") return signOut(req, env);
+    if (id === "me" && m === "GET") {
+      const c = await caller(req, env);
+      if (c.kind !== "user") return json({ user: null, kind: c.kind });
+      return json({ user: userView(c.user) });
+    }
+    throw new HttpError(404, "not found");
+  }
+
+  if (resource === "admin") {
+    await staff(req, env);
+    if (id === "stats" && m === "GET") return adminStats(env);
+    throw new HttpError(404, "not found");
+  }
 
   if (resource === "boxes") {
     if (id === "join" && m === "POST") return joinBox(req, env);
@@ -433,6 +580,21 @@ async function route(req: Request, env: Env): Promise<Response> {
       const db = await loadDb(env, c, id);
       return json(await agent(await loadBox(env, db.box_id), "POST", `/v1/databases/${db.id}/suspend?force=true`));
     }
+    // SQL on behalf of the owner. The agent runs it as the database's own
+    // role, so this grants nothing the owner does not already have.
+    if (id && action === "query" && m === "POST") {
+      const db = await loadDb(env, c, id);
+      const b = await body<{ sql?: string; limit?: number }>(req);
+      if (typeof b.sql !== "string" || !b.sql.trim()) throw new HttpError(400, "sql is required");
+      if (b.sql.length > 100_000) throw new HttpError(413, "query too long");
+      return json(
+        await agent(await loadBox(env, db.box_id), "POST", `/v1/databases/${db.id}/query`, {
+          sql: b.sql,
+          limit: b.limit,
+        }),
+      );
+    }
+
     if (id && action === "restore-points" && m === "GET") {
       const db = await loadDb(env, c, id);
       const snaps = await agent<{ taken_at: string; kind: string }[]>(

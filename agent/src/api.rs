@@ -99,6 +99,7 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/databases/{id}/snapshot", post(snapshot))
         .route("/v1/databases/{id}/snapshots", get(snapshots))
         .route("/v1/databases/{id}/sync", post(sync))
+        .route("/v1/databases/{id}/query", post(query))
         .route("/v1/databases/{id}/release", post(release))
         .route("/v1/databases/{id}/password", post(password))
         .layer(middleware::from_fn_with_state(app.clone(), auth))
@@ -249,6 +250,23 @@ async fn snapshots(
     Path(id): Path<String>,
 ) -> ApiResult<Vec<crate::storage::SnapshotInfo>> {
     Ok(Json(app.storage.list_snapshots(&id).await?))
+}
+
+#[derive(Deserialize)]
+struct QueryBody {
+    sql: String,
+    limit: Option<usize>,
+}
+
+/// Run SQL as the database's own role. Used by the dashboard's table browser
+/// and SQL editor, so that a browser never needs the database password.
+async fn query(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Json(b): Json<QueryBody>,
+) -> ApiResult<crate::pg::QueryResult> {
+    let limit = b.limit.unwrap_or(200).clamp(1, 1000);
+    Ok(Json(app.query(&id, &b.sql, limit).await?))
 }
 
 async fn sync(State(app): State<AppState>, Path(id): Path<String>) -> ApiResult<serde_json::Value> {

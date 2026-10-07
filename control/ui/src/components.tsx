@@ -27,7 +27,13 @@ import {
   Transition,
   TransitionChild,
 } from "@headlessui/react";
-import { CheckIcon, ChevronDownIcon, EllipsisVerticalIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ClipboardDocumentIcon,
+  EllipsisVerticalIcon,
+  MagnifyingGlassIcon,
+} from "@heroicons/react/20/solid";
 import { Fragment, type ReactNode } from "react";
 
 export const cx = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(" ");
@@ -50,10 +56,10 @@ export function Button({ children, variant = "default", size = "md", className, 
     <HButton
       {...rest}
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-md border font-medium transition",
+        "inline-flex items-center gap-1.5 rounded-md border font-medium transition active:scale-[0.98]",
         size === "sm" ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-[13px]",
         "data-disabled:cursor-default data-disabled:opacity-40",
-        "data-focus:outline-none data-focus:ring-1 data-focus:ring-edge",
+        "data-focus:outline-none data-focus:ring-2 data-focus:ring-neon/30 data-focus:ring-offset-0",
         variant === "primary" && "border-transparent bg-text text-base data-hover:bg-white",
         variant === "accent" && "border-neon/40 bg-neon/10 text-neon data-hover:bg-neon/15",
         variant === "danger" && "border-line text-text data-hover:border-rose/50 data-hover:text-rose",
@@ -173,7 +179,7 @@ export function TextField({
         onChange={(e) => onChange(e.target.value)}
         className={cx(
           "w-full rounded-md border border-line bg-base px-3 py-2 text-[13px] text-text",
-          "placeholder:text-faint data-focus:border-edge data-focus:outline-none",
+          "placeholder:text-faint data-focus:border-edge data-focus:outline-none data-focus:ring-2 data-focus:ring-neon/20",
           mono && "font-mono",
         )}
       />
@@ -209,7 +215,9 @@ export function Select<T extends string>({
       </ListboxButton>
       <ListboxOptions
         anchor="bottom start"
-        className="z-50 mt-1 max-h-80 w-[--button-width] min-w-48 overflow-auto rounded-md border border-line bg-panel p-1 text-[13px] shadow-2xl focus:outline-none"
+        transition
+        className="z-50 mt-1 max-h-80 w-[--button-width] min-w-48 overflow-auto rounded-lg border border-line bg-panel p-1 text-[13px] shadow-panel focus:outline-none
+          origin-top transition duration-100 ease-out data-closed:scale-95 data-closed:opacity-0"
       >
         {options.map((o) => (
           <ListboxOption
@@ -236,7 +244,9 @@ export function RowMenu({ items }: { items: { label: string; onClick: () => void
       </MenuButton>
       <MenuItems
         anchor="bottom end"
-        className="z-50 w-48 rounded-md border border-line bg-panel p-1 text-[13px] shadow-2xl focus:outline-none"
+        transition
+        className="z-50 w-48 rounded-lg border border-line bg-panel p-1 text-[13px] shadow-panel focus:outline-none
+          origin-top-right transition duration-100 ease-out data-closed:scale-95 data-closed:opacity-0"
       >
         {items.map((it) => (
           <MenuItem key={it.label}>
@@ -293,7 +303,7 @@ export function Modal({
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <DialogPanel className="w-full max-w-md rounded-xl border border-line bg-panel p-5 shadow-2xl">
+            <DialogPanel className="w-full max-w-md rounded-xl border border-line bg-panel p-5 shadow-panel">
               <DialogTitle className="text-[15px] font-medium">{title}</DialogTitle>
               <div className="mt-4">{children}</div>
             </DialogPanel>
@@ -310,6 +320,30 @@ export const Empty = ({ children }: { children: ReactNode }) => (
   <div className="py-14 text-center text-[13px] text-faint">{children}</div>
 );
 
+/** A shape where content will be, rather than the word "Loading". */
+export const Skeleton = ({ className }: { className?: string }) => (
+  <div className={cx("animate-pulse rounded bg-raise", className)} />
+);
+
+export function TableSkeleton({ rows = 8, cols = 4 }: { rows?: number; cols?: number }) {
+  return (
+    <div className="p-4">
+      <div className="mb-3 flex gap-3">
+        {Array.from({ length: cols }).map((_, i) => (
+          <Skeleton key={i} className="h-3 flex-1" />
+        ))}
+      </div>
+      {Array.from({ length: rows }).map((_, r) => (
+        <div key={r} className="mb-2 flex gap-3" style={{ opacity: 1 - r * 0.09 }}>
+          {Array.from({ length: cols }).map((_, c) => (
+            <Skeleton key={c} className="h-3.5 flex-1" />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export const ErrorNote = ({ children }: { children: ReactNode }) => (
   <div className="my-3 rounded-md border border-rose/30 bg-rose/5 px-3 py-2 text-[13px] text-rose/90">{children}</div>
 );
@@ -320,10 +354,10 @@ export function CopyField({ value }: { value: string }) {
       <code className="flex-1 overflow-x-auto whitespace-nowrap px-3 py-2.5 font-mono text-xs text-dim">{value}</code>
       <button
         onClick={() => navigator.clipboard.writeText(value)}
-        className="border-l border-line px-3 text-xs text-dim hover:bg-raise hover:text-text"
+        className="border-l border-line px-3 text-dim transition hover:bg-raise hover:text-text"
         title="Copy"
       >
-        ⧉
+        <ClipboardDocumentIcon className="size-4" />
       </button>
     </div>
   );

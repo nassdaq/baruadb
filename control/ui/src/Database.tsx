@@ -1,6 +1,7 @@
 import { Disclosure, DisclosureButton, DisclosurePanel, Input, Textarea } from "@headlessui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError, CATALOG, ident, literal, type Database, type QueryResult } from "./api";
+import { ArrowPathIcon, ChevronRightIcon, PlusIcon } from "@heroicons/react/20/solid";
 import {
   ago,
   Choice,
@@ -13,6 +14,7 @@ import {
   Empty,
   ErrorNote,
   Modal,
+  TableSkeleton,
   SearchBox,
   Select,
   Stat,
@@ -146,7 +148,7 @@ function Overview({ db }: { db: Database }) {
         </p>
         <Disclosure as="div" className="mt-4 border-t border-line-soft pt-4">
           <DisclosureButton className="group flex w-full items-center gap-2 text-left text-[13px] font-medium">
-            <span className="text-faint transition group-data-open:rotate-90">›</span>
+            <ChevronRightIcon className="size-4 text-faint transition group-data-open:rotate-90" />
             Other ways to connect
           </DisclosureButton>
           <DisclosurePanel className="mt-3 space-y-3">
@@ -596,9 +598,9 @@ function TablesConsole({ db }: { db: Database }) {
             <button
               onClick={() => reloadTables()}
               title="Refresh"
-              className="shrink-0 rounded-md border border-line bg-panel p-1.5 text-dim hover:bg-raise hover:text-text"
+              className="shrink-0 rounded-md border border-line bg-panel p-1.5 text-dim transition hover:bg-raise hover:text-text"
             >
-              ↻
+              <ArrowPathIcon className="size-4" />
             </button>
             <CreateMenu onPick={setCreating} />
           </div>
@@ -645,7 +647,7 @@ function TablesConsole({ db }: { db: Database }) {
                 ] as const}
               />
               <Button size="sm" onClick={() => setAdding(true)}>
-                ⊕ Add record
+                <PlusIcon className="size-3.5" /> Add record
               </Button>
               <FilterBar
                 columns={rows?.columns ?? []}
@@ -666,7 +668,7 @@ function TablesConsole({ db }: { db: Database }) {
                 }}
               />
               <Button size="sm" onClick={() => loadRows(table, page, sort, filters)} title="Refresh">
-                ↻
+                <ArrowPathIcon className="size-3.5" />
               </Button>
               {whyReadOnly ? (
                 <span className="text-[11px] text-faint" title={whyReadOnly}>
@@ -714,7 +716,7 @@ function TablesConsole({ db }: { db: Database }) {
             <div className="min-h-0 flex-1 overflow-auto">
               {error && <div className="p-3"><ErrorNote>{error}</ErrorNote></div>}
               {busy ? (
-                <Empty>Loading…</Empty>
+                <TableSkeleton rows={9} cols={5} />
               ) : view === "structure" ? (
                 columns && <Structure result={columns} />
               ) : (

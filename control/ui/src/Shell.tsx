@@ -58,7 +58,8 @@ export function Shell({
           </MenuButton>
           <MenuItems
             anchor="bottom end"
-            className="z-50 mt-1 w-56 rounded-md border border-line bg-panel p-1 text-[13px] shadow-2xl focus:outline-none"
+            transition
+            className="z-50 mt-1 w-56 rounded-lg border border-line bg-panel p-1 text-[13px] shadow-panel focus:outline-none origin-top-right transition duration-100 ease-out data-closed:scale-95 data-closed:opacity-0"
           >
             <div className="border-b border-line px-2.5 py-2 text-xs text-faint">{me.email}</div>
             <MenuItem>

@@ -2,7 +2,7 @@
 // drives the WHERE clause. Kept apart from the page layout because all four of
 // those things talk to each other.
 import { Input, Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
-import { ArrowsUpDownIcon, FunnelIcon, TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { ArrowsUpDownIcon, FunnelIcon, NoSymbolIcon, TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, ident, literal, type QueryResult } from "./api";
 import { Button, CheckBox, cx, Select } from "./components";
@@ -71,7 +71,9 @@ export function FilterBar({
         </PopoverButton>
         <PopoverPanel
           anchor="bottom start"
-          className="z-50 mt-1 w-80 rounded-lg border border-line bg-panel p-3 shadow-2xl"
+          transition
+          className="z-50 mt-1 w-80 rounded-lg border border-line bg-panel p-3 shadow-panel
+            origin-top transition duration-100 ease-out data-closed:scale-95 data-closed:opacity-0"
         >
           {({ close }) => (
             <AddFilter
@@ -369,9 +371,9 @@ function CellEditor({
             commit(null);
           }}
           title="Set NULL"
-          className="shrink-0 rounded border border-line px-1 text-[11px] text-faint hover:text-text"
+          className="shrink-0 rounded border border-line p-1 text-faint transition hover:border-edge hover:text-text"
         >
-          ∅
+          <NoSymbolIcon className="size-3" />
         </button>
       )}
     </div>
@@ -429,7 +431,9 @@ export function SortMenu({
       </PopoverButton>
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-1 w-72 rounded-lg border border-line bg-panel p-3 shadow-2xl"
+        transition
+        className="z-50 mt-1 w-72 rounded-lg border border-line bg-panel p-3 shadow-panel
+          origin-top transition duration-100 ease-out data-closed:scale-95 data-closed:opacity-0"
       >
         {({ close }) => (
           <div>

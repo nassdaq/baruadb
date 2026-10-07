@@ -15,6 +15,7 @@ import {
   Stat,
   TextField,
 } from "./components";
+import { PlusIcon } from "@heroicons/react/20/solid";
 import { Mark, PageHead } from "./Shell";
 
 const PER_PAGE = 10;
@@ -63,7 +64,7 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
         actions={
           <>
             <Button variant="primary" onClick={() => setCreating(true)}>
-              <span className="text-[15px] leading-none">⊕</span> New database
+<PlusIcon className="size-4" /> New database
             </Button>
           </>
         }
@@ -106,7 +107,7 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
             {shown.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-[13px] text-faint">
-                  {list === null ? "Loading…" : search ? "Nothing matches that." : "No databases yet."}
+                  {list === null ? "…" : search ? "Nothing matches that." : "No databases yet."}
                 </td>
               </tr>
             ) : (

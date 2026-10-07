@@ -4,6 +4,7 @@
 import { Input, Menu, MenuButton, MenuItem, MenuItems, MenuSeparator, Textarea } from "@headlessui/react";
 import {
   ArrowUpTrayIcon,
+  XMarkIcon,
   PlusIcon,
   RectangleGroupIcon,
   ShieldCheckIcon,
@@ -38,7 +39,8 @@ export function CreateMenu({ onPick }: { onPick: (k: Kind) => void }) {
       </MenuButton>
       <MenuItems
         anchor="bottom start"
-        className="z-50 mt-1 w-52 rounded-md border border-line bg-panel p-1 text-[13px] shadow-2xl focus:outline-none"
+        transition
+        className="z-50 mt-1 w-52 rounded-lg border border-line bg-panel p-1 text-[13px] shadow-panel focus:outline-none origin-top-left transition duration-100 ease-out data-closed:scale-95 data-closed:opacity-0"
       >
         {ITEMS.map((it) => (
           <MenuItem key={it.kind}>
@@ -258,10 +260,10 @@ function TableForm({ error, busy, execute, schema, schemas, onClose }: FormProps
             <button
               type="button"
               onClick={() => setCols((x) => x.filter((_, j) => j !== i))}
-              className="px-1 text-faint hover:text-rose"
+              className="px-1 text-faint transition hover:text-rose"
               title="Remove"
             >
-              ✕
+              <XMarkIcon className="size-4" />
             </button>
           </div>
         ))}

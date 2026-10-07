@@ -35,7 +35,8 @@ export function Chart({
         ? series.reduce((sum, s) => sum + (s.points[i] ?? 0), 0)
         : Math.max(...series.map((s) => s.points[i] ?? 0)),
     );
-    const max = Math.max(forcedMax ?? 0, ...totals, 1);
+    const measured = Math.max(...totals, 0);
+    const max = forcedMax ?? (measured > 0 ? measured * 1.15 : 1);
     const x = (i: number) => PAD.l + (i / Math.max(times.length - 1, 1)) * (width - PAD.l - PAD.r);
     const y = (v: number) => PAD.t + (1 - v / max) * (H - PAD.t - PAD.b);
 

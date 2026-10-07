@@ -139,13 +139,12 @@ export function Monitoring({ db }: { db: Database }) {
                   <div className="grid gap-4 md:grid-cols-2">
                     <Chart
                       title="RAM"
-                      unit="megabytes"
+                      unit="megabytes · limit 512"
                       times={times}
                       series={memory}
-                      max={512}
                       format={(v) => `${Math.round(v)}`}
                     />
-                    <Chart title="CPU" unit="cores" times={times} series={cpu} max={1} format={(v) => v.toFixed(2)} />
+                    <Chart title="CPU" unit="cores · limit 1" times={times} series={cpu} format={(v) => v.toFixed(3)} />
                   </div>
                 </div>
 

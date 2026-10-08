@@ -1,9 +1,15 @@
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@headlessui/react";
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import {
+  BoltIcon,
+  ClockIcon,
+  MoonIcon,
+  PresentationChartLineIcon,
+} from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Database, type MetricSample, type QueryResult } from "./api";
 import { Chart, RangePicker, type Series } from "./Chart";
-import { ago, Badge, Button, Card, cx, Dot, Empty, ErrorNote, Stat } from "./components";
+import { ago, Badge, Button, Card, cx, Dot, Empty, EmptyState, ErrorNote, Stat } from "./components";
 import { DataGrid } from "./Grid";
 import { PageHead } from "./Shell";
 
@@ -218,10 +224,20 @@ function ActiveQueries({ db }: { db: Database }) {
     return () => clearInterval(t);
   }, [load]);
 
-  if (db.state !== "awake") return <Empty>The database is {db.state}. Nothing is running.</Empty>;
+  if (db.state !== "awake")
+    return (
+      <EmptyState icon={MoonIcon} title={`This database is ${db.state}`}>
+        Nothing is running, so there are no active queries. It wakes on the next connection.
+      </EmptyState>
+    );
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!result) return <Empty>Loading…</Empty>;
-  if (result.rows.length === 0) return <Empty>No queries running right now. Refreshes every 5 seconds.</Empty>;
+  if (result.rows.length === 0)
+    return (
+      <EmptyState icon={BoltIcon} title="Nothing running right now">
+        Queries appear here while they execute. This refreshes every five seconds.
+      </EmptyState>
+    );
   return (
     <Card className="overflow-x-auto">
       <DataGrid result={result} />
@@ -250,17 +266,19 @@ function QueryPerformance({ db }: { db: Database }) {
       .catch((e) => setError(e.message));
   }, [db.id, db.state]);
 
-  if (db.state !== "awake") return <Empty>The database is {db.state}.</Empty>;
+  if (db.state !== "awake")
+    return (
+      <EmptyState icon={MoonIcon} title={`This database is ${db.state}`}>
+        Per-query timings come from the running server.
+      </EmptyState>
+    );
   if (error) {
     return (
-      <Card className="p-5">
-        <div className="mb-2 text-[13px] font-medium">pg_stat_statements is not available</div>
-        <p className="text-[13px] text-dim">
-          Per-query timings come from the pg_stat_statements extension, which has to be loaded when Postgres starts.
-          It is not enabled on this box yet, so there is nothing to show rather than something invented.
-        </p>
-        <p className="mt-2 font-mono text-[11px] text-faint">{error}</p>
-      </Card>
+      <EmptyState icon={PresentationChartLineIcon} tone="warn" title="pg_stat_statements is not available">
+        Per-query timings come from that extension, which has to be loaded when Postgres starts. It is not enabled on
+        this box, so there is nothing to show rather than something invented.
+        <span className="mt-3 block font-mono text-[11px] text-faint">{error}</span>
+      </EmptyState>
     );
   }
   if (!result) return <Empty>Loading…</Empty>;
@@ -295,7 +313,12 @@ function SystemOperations({ db, samples }: { db: Database; samples: MetricSample
     ...(points ?? []).map((p) => ({ at: p.taken_at, what: `snapshot to R2 (${p.kind})`, kind: "storage" })),
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
-  if (events.length === 0) return <Empty>Nothing recorded in this window.</Empty>;
+  if (events.length === 0)
+    return (
+      <EmptyState icon={ClockIcon} title="Nothing recorded in this window">
+        Wakes, sleeps and snapshots appear here. Try a longer range.
+      </EmptyState>
+    );
   return (
     <Card className="overflow-hidden">
       <table className="w-full text-[13px]">

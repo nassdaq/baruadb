@@ -4,6 +4,7 @@ import { Admin } from "./Admin";
 import { Button, Card, CopyField, ErrorNote, Modal, TextField } from "./components";
 import { DatabaseSidebar, DatabaseView, type Section } from "./Database";
 import { Databases } from "./Databases";
+import { CircleStackIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { Mark, NavGroup, NavLink, Shell } from "./Shell";
 import { Palette, usePaletteShortcut } from "./Palette";
 
@@ -137,8 +138,20 @@ export default function App() {
       onSearch={() => setPaletteOpen(true)}
       sidebar={
         <NavGroup title="Organization">
-          <NavLink label="Databases" active={!onAdmin} onClick={() => go("/")} />
-          {me.is_admin && <NavLink label="Admin" active={onAdmin} onClick={() => go("/admin")} />}
+          <NavLink
+            label="Databases"
+            icon={<CircleStackIcon className="size-4" />}
+            active={!onAdmin}
+            onClick={() => go("/")}
+          />
+          {me.is_admin && (
+            <NavLink
+              label="Admin"
+              icon={<ShieldCheckIcon className="size-4" />}
+              active={onAdmin}
+              onClick={() => go("/admin")}
+            />
+          )}
         </NavGroup>
       }
       footer={<div className="truncate text-[11px] text-faint">Serverless Postgres</div>}
@@ -181,9 +194,9 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   return (
     <div className="grid h-full place-items-center px-5">
       <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center gap-2 text-[17px] font-semibold tracking-tight">
-          <Mark className="size-5 text-accent" />
-          BARUA
+        <div className="mb-7 flex flex-col items-center text-center">
+          <Mark className="mb-4 size-12 text-brand" />
+          <div className="text-[20px] font-semibold tracking-tight">BARUA</div>
         </div>
         <Card className="p-6">
           <h1 className="text-[17px] font-semibold">{mode === "in" ? "Sign in" : "Create an account"}</h1>

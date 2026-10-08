@@ -27,11 +27,13 @@ import {
   Transition,
   TransitionChild,
 } from "@headlessui/react";
+import type React from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
   ClipboardDocumentIcon,
   EllipsisVerticalIcon,
+  ExclamationTriangleIcon,
   MagnifyingGlassIcon,
 } from "@heroicons/react/20/solid";
 import { Fragment, type ReactNode } from "react";
@@ -320,6 +322,38 @@ export const Empty = ({ children }: { children: ReactNode }) => (
   <div className="py-14 text-center text-[13px] text-faint">{children}</div>
 );
 
+/** The screen when there is nothing to show. A large, quiet icon carries it;
+ *  the title says what is missing and the line underneath says what to do. */
+export function EmptyState({
+  icon: Icon,
+  title,
+  children,
+  action,
+  tone = "quiet",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  children?: ReactNode;
+  action?: ReactNode;
+  tone?: "quiet" | "warn";
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+      <div
+        className={cx(
+          "mb-5 grid size-16 place-items-center rounded-2xl border",
+          tone === "warn" ? "border-amber/20 bg-amber/5" : "border-line bg-panel",
+        )}
+      >
+        <Icon className={cx("size-8", tone === "warn" ? "text-amber/70" : "text-faint")} />
+      </div>
+      <div className="mb-1.5 text-[15px] font-medium text-text">{title}</div>
+      {children && <div className="max-w-sm text-[13px] leading-relaxed text-dim">{children}</div>}
+      {action && <div className="mt-5">{action}</div>}
+    </div>
+  );
+}
+
 /** A shape where content will be, rather than the word "Loading". */
 export const Skeleton = ({ className }: { className?: string }) => (
   <div className={cx("animate-pulse rounded bg-raise", className)} />
@@ -345,7 +379,10 @@ export function TableSkeleton({ rows = 8, cols = 4 }: { rows?: number; cols?: nu
 }
 
 export const ErrorNote = ({ children }: { children: ReactNode }) => (
-  <div className="my-3 rounded-md border border-rose/30 bg-rose/5 px-3 py-2 text-[13px] text-rose/90">{children}</div>
+  <div className="my-3 flex items-start gap-2 rounded-md border border-rose/30 bg-rose/5 px-3 py-2 text-[13px] text-rose/90">
+    <ExclamationTriangleIcon className="mt-0.5 size-4 shrink-0" />
+    <span>{children}</span>
+  </div>
 );
 
 export function CopyField({ value }: { value: string }) {

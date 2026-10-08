@@ -8,6 +8,7 @@ import {
   CopyField,
   cx,
   Dot,
+  EmptyState,
   ErrorNote,
   Modal,
   RowMenu,
@@ -16,6 +17,7 @@ import {
   TextField,
 } from "./components";
 import { PlusIcon } from "@heroicons/react/20/solid";
+import { CircleStackIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { Mark, PageHead } from "./Shell";
 
 const PER_PAGE = 10;
@@ -106,8 +108,26 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
           <tbody>
             {shown.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-[13px] text-faint">
-                  {list === null ? "…" : search ? "Nothing matches that." : "No databases yet."}
+                <td colSpan={7} className="p-0">
+                  {list === null ? (
+                    <div className="py-12 text-center text-[13px] text-faint">…</div>
+                  ) : search ? (
+                    <EmptyState icon={MagnifyingGlassIcon} title="Nothing matches that">
+                      No database here is called “{search}”.
+                    </EmptyState>
+                  ) : (
+                    <EmptyState
+                      icon={CircleStackIcon}
+                      title="No databases yet"
+                      action={
+                        <Button variant="accent" onClick={() => setCreating(true)}>
+                          <PlusIcon className="size-4" /> Create your first database
+                        </Button>
+                      }
+                    >
+                      Postgres 16, asleep after five idle minutes, awake again on the next connection.
+                    </EmptyState>
+                  )}
                 </td>
               </tr>
             ) : (

@@ -3,15 +3,26 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError, CATALOG, ident, literal, type Database, type QueryResult } from "./api";
 import { ArrowPathIcon, ChevronRightIcon, PlusIcon } from "@heroicons/react/20/solid";
 import {
+  ArrowUturnLeftIcon,
+  ChartBarIcon,
+  CircleStackIcon,
+  CommandLineIcon,
+  Squares2X2Icon,
+  TableCellsIcon,
+  UsersIcon,
+  ArchiveBoxIcon,
+  CursorArrowRaysIcon,
+} from "@heroicons/react/24/outline";
+import {
   ago,
   Choice,
+  EmptyState,
   Badge,
   Button,
   Card,
   CopyField,
   cx,
   Dot,
-  Empty,
   ErrorNote,
   Modal,
   TableSkeleton,
@@ -64,16 +75,51 @@ export function DatabaseSidebar({
       </div>
 
       <NavGroup>
-        <NavLink label="Overview" active={section === "overview"} onClick={() => onSection("overview")} />
-        <NavLink label="Branches" active={section === "branches"} onClick={() => onSection("branches")} />
-        <NavLink label="Monitoring" active={section === "monitoring"} onClick={() => onSection("monitoring")} />
+        <NavLink
+          label="Overview"
+          icon={<Squares2X2Icon className="size-4" />}
+          active={section === "overview"}
+          onClick={() => onSection("overview")}
+        />
+        <NavLink
+          label="Branches"
+          icon={<CircleStackIcon className="size-4" />}
+          active={section === "branches"}
+          onClick={() => onSection("branches")}
+        />
+        <NavLink
+          label="Monitoring"
+          icon={<ChartBarIcon className="size-4" />}
+          active={section === "monitoring"}
+          onClick={() => onSection("monitoring")}
+        />
       </NavGroup>
 
       <NavGroup title="Postgres database">
-        <NavLink label="Tables" active={section === "tables"} onClick={() => onSection("tables")} />
-        <NavLink label="SQL Editor" active={section === "sql"} onClick={() => onSection("sql")} />
-        <NavLink label="Backup & Restore" active={section === "backups"} onClick={() => onSection("backups")} />
-        <NavLink label="Roles" active={section === "roles"} onClick={() => onSection("roles")} />
+        <NavLink
+          label="Tables"
+          icon={<TableCellsIcon className="size-4" />}
+          active={section === "tables"}
+          onClick={() => onSection("tables")}
+        />
+        <NavLink
+          label="SQL Editor"
+          icon={<CommandLineIcon className="size-4" />}
+          active={section === "sql"}
+          onClick={() => onSection("sql")}
+        />
+        <NavLink
+          label="Backup & Restore"
+          icon={<ArrowUturnLeftIcon className="size-4" />}
+          active={section === "backups"}
+          onClick={() => onSection("backups")}
+        />
+        <NavLink
+          label="Roles"
+          icon={<UsersIcon className="size-4" />}
+          active={section === "roles"}
+          onClick={() => onSection("roles")}
+        />
       </NavGroup>
     </>
   );
@@ -380,8 +426,10 @@ function Backups({ db }: { db: Database }) {
               </tr>
             ) : points.snapshots.length === 0 ? (
               <tr>
-                <td colSpan={2} className="px-4 py-10 text-center text-faint">
-                  No snapshots yet.
+                <td colSpan={2} className="p-0">
+                  <EmptyState icon={ArchiveBoxIcon} title="No snapshots yet">
+                    A snapshot is taken shortly after a database is created, then every day it is used.
+                  </EmptyState>
                 </td>
               </tr>
             ) : (
@@ -615,7 +663,10 @@ function TablesConsole({ db }: { db: Database }) {
         )}
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {visible.length === 0 ? (
-            <div className="px-2 py-6 text-center text-xs text-faint">No tables</div>
+            <div className="px-3 py-8 text-center">
+              <TableCellsIcon className="mx-auto mb-2 size-7 text-faint/60" />
+              <div className="text-xs text-faint">No tables in this schema</div>
+            </div>
           ) : (
             visible.map((t) => (
               <button
@@ -638,7 +689,9 @@ function TablesConsole({ db }: { db: Database }) {
       {/* data pane */}
       <div className="flex min-w-0 flex-1 flex-col">
         {!table ? (
-          <Empty>Pick a table to see its rows.</Empty>
+          <EmptyState icon={CursorArrowRaysIcon} title="No table selected">
+            Pick a table on the left to browse its rows, or create one with the + button.
+          </EmptyState>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
@@ -937,7 +990,10 @@ function SqlEditor({ db }: { db: Database }) {
         ) : result ? (
           <DataGrid result={result} flush />
         ) : (
-          <Empty>Results appear here.</Empty>
+          <EmptyState icon={CommandLineIcon} title="Results appear here">
+            Write a query above and press <span className="font-mono text-faint">⌘↵</span>. Statements run as your
+            database role.
+          </EmptyState>
         )}
       </div>
     </div>

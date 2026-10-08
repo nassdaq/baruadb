@@ -35,6 +35,7 @@ import { NavGroup, NavLink, PageHead } from "./Shell";
 import { DataGrid, type EditPlan, type Filter, FilterBar, SelectionBar, SortMenu, whereClause } from "./Grid";
 import { CreateDialogs, CreateMenu, type Kind } from "./Create";
 import { Monitoring } from "./Monitoring";
+import { Spinner } from "./Spinner";
 
 export type Section = "overview" | "branches" | "monitoring" | "tables" | "sql" | "backups" | "roles";
 const PAGE = 50;
@@ -939,8 +940,14 @@ function SqlEditor({ db }: { db: Database }) {
               {result.ms} ms{result.rows_affected !== null && ` · ${result.rows_affected} rows`}
             </span>
           )}
+          <Spinner
+            size={16}
+            noSheen
+            state={busy ? "loading" : error ? "error" : result ? "success" : "idle"}
+            label={busy ? "Running" : error ? "Query failed" : "Ready"}
+          />
           <Button variant="accent" size="sm" onClick={run} disabled={busy}>
-            {busy ? "Running…" : "Run ⌘↵"}
+            {busy ? "Running" : "Run ⌘↵"}
           </Button>
         </div>
       </div>

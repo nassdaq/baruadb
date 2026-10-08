@@ -1,6 +1,7 @@
 @import "tailwindcss";
-/* Latin subset of the variable weight only: 48 kB for every weight we use. */
-@import "@fontsource-variable/inter/wght.css";
+/* Outfit is the brand face; the latin subset of the variable weight covers
+   every weight the console uses. */
+@import "@fontsource-variable/outfit";
 
 /* Console palette: near-black surfaces, hairline borders, one green accent. */
 @theme {
@@ -26,7 +27,7 @@
   --color-amber: #fbbf24;
   --color-rose: #f87171;
 
-  --font-sans: "Inter Variable", ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Outfit Variable", ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
   /* Overlays sit above the page: a hairline, a soft ring, then a real shadow. */
@@ -45,8 +46,8 @@ body {
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: 13px;
-  /* Inter sets a touch wide for dense UI at these sizes. */
-  letter-spacing: -0.006em;
+  /* Outfit is geometric and sets wide; pull it in slightly at UI sizes. */
+  letter-spacing: -0.008em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -59,6 +60,13 @@ h1, h2, h3 {
 /* Tabular figures stop numbers jittering as metrics tick over. */
 .tabular, table td, table th {
   font-variant-numeric: tabular-nums;
+}
+
+/* The brand loader takes its colours from the same tokens as everything else. */
+vector-spinner {
+  --vs-color: var(--color-accent);
+  --vs-success: var(--color-accent);
+  --vs-error: var(--color-rose);
 }
 
 * {

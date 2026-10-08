@@ -5,7 +5,8 @@ import { Button, Card, ConnectPanel, ErrorNote, Modal, TextField } from "./compo
 import { DatabaseSidebar, DatabaseView, type Section } from "./Database";
 import { Databases } from "./Databases";
 import { CircleStackIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
-import { Mark, NavGroup, NavLink, Shell } from "./Shell";
+import { NavGroup, NavLink, Shell } from "./Shell";
+import { BootScreen, Spinner } from "./Spinner";
 import { Palette, usePaletteShortcut } from "./Palette";
 
 /** Routing: the path is the state. /databases/<id>/<section> or /admin. */
@@ -63,9 +64,9 @@ export default function App() {
     return () => clearInterval(t);
   }, [dbId, signedIn, loadDb]);
 
-  if (me === undefined) {
-    return <div className="grid h-full place-items-center text-[13px] text-faint">Loading…</div>;
-  }
+  // The first paint of the session: the mark draws itself in while we find out
+  // who is signed in.
+  if (me === undefined) return <BootScreen />;
   if (me === null) return <SignIn onSignedIn={setMe} />;
 
   const signOut = async () => {
@@ -174,8 +175,10 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
     <div className="grid h-full place-items-center px-5">
       <div className="w-full max-w-sm">
         <div className="mb-7 flex flex-col items-center text-center">
-          <Mark className="mb-4 size-12 text-brand" />
-          <div className="text-[20px] font-semibold tracking-tight">BARUA</div>
+          <Spinner size={56} state={busy ? "loading" : error ? "error" : "idle"} intro className="mb-4" />
+          <div className="text-[20px] tracking-tight">
+            <span className="font-semibold">Barua</span> <span className="text-dim">Database</span>
+          </div>
         </div>
         <Card className="p-6">
           <h1 className="text-[17px] font-semibold">{mode === "in" ? "Sign in" : "Create an account"}</h1>
@@ -199,7 +202,8 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
               placeholder={mode === "up" ? "at least 10 characters" : ""}
             />
             <Button type="submit" variant="accent" disabled={busy} className="mt-1 w-full justify-center">
-              {busy ? "…" : mode === "in" ? "Sign in" : "Create account"}
+              {busy && <Spinner size={16} noSheen />}
+              {busy ? "Working" : mode === "in" ? "Sign in" : "Create account"}
             </Button>
           </form>
           <button

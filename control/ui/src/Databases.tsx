@@ -19,6 +19,7 @@ import {
 import { PlusIcon } from "@heroicons/react/20/solid";
 import { CircleStackIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { Mark, PageHead } from "./Shell";
+import { Spinner } from "./Spinner";
 
 const PER_PAGE = 10;
 
@@ -297,9 +298,10 @@ function CreateDialog({
         <div className="mb-4 rounded-md border border-line bg-base px-3 py-2.5 text-xs text-dim">
           Postgres 16 · Linode EU (Amsterdam) · sleeps after 5 idle minutes
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button type="submit" variant="accent" disabled={busy}>
-            {busy ? "Creating…" : "Create database"}
+            {busy && <Spinner size={16} noSheen />}
+            {busy ? "Creating" : "Create database"}
           </Button>
           <Button onClick={onClose}>Cancel</Button>
         </div>

@@ -175,21 +175,42 @@ export function TextField({
   mono?: boolean;
   hint?: string;
 }) {
+  // A password field carries its own eye: people mistype, and a dot row
+  // cannot tell them where. The input keeps its type for autofill; only the
+  // rendering flips.
+  const secret = type === "password";
+  const [shown, setShown] = useState(false);
   return (
     <Field className="mb-3">
       <Label className="mb-1.5 block text-[12px] text-dim">{label}</Label>
-      <Input
-        type={type}
-        value={value}
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className={cx(
-          "w-full rounded-md border border-line bg-base px-3 py-2 text-[13px] text-text",
-          "placeholder:text-faint data-focus:border-edge data-focus:outline-none data-focus:ring-2 data-focus:ring-accent/20",
-          mono && "font-mono",
+      <div className="relative">
+        <Input
+          type={secret && shown ? "text" : type}
+          value={value}
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          autoComplete={secret ? "current-password" : undefined}
+          onChange={(e) => onChange(e.target.value)}
+          className={cx(
+            "w-full rounded-md border border-line bg-base px-3 py-2 text-[13px] text-text",
+            "placeholder:text-faint data-focus:border-edge data-focus:outline-none data-focus:ring-2 data-focus:ring-accent/20",
+            mono && "font-mono",
+            secret && "pr-10",
+          )}
+        />
+        {secret && (
+          <button
+            type="button"
+            onClick={() => setShown((v) => !v)}
+            aria-label={shown ? "Hide password" : "Show password"}
+            aria-pressed={shown}
+            title={shown ? "Hide password" : "Show password"}
+            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-faint transition hover:text-text focus:outline-none focus-visible:text-text"
+          >
+            {shown ? <EyeSlashIcon className="size-4" /> : <EyeIcon className="size-4" />}
+          </button>
         )}
-      />
+      </div>
       {hint && <Description className="mt-1 block text-xs text-faint">{hint}</Description>}
     </Field>
   );

@@ -17,6 +17,7 @@ export type NavItem = {
 export function Shell({
   me,
   onSignOut,
+  onAccount,
   onSearch,
   sidebar,
   children,
@@ -24,6 +25,7 @@ export function Shell({
 }: {
   me: Me;
   onSignOut: () => void;
+  onAccount?: () => void;
   onSearch: () => void;
   sidebar: ReactNode;
   children: ReactNode;
@@ -56,7 +58,20 @@ export function Shell({
             transition
             className="z-50 mt-1 w-56 rounded-lg border border-line bg-panel p-1 text-[13px] shadow-panel focus:outline-none origin-top-right transition duration-100 ease-out data-closed:scale-95 data-closed:opacity-0"
           >
-            <div className="border-b border-line px-2.5 py-2 text-xs text-faint">{me.email}</div>
+            <div className="border-b border-line px-2.5 py-2">
+              <div className="truncate text-[13px] text-text">{me.name || me.email.split("@")[0]}</div>
+              <div className="truncate text-xs text-faint">{me.email}</div>
+            </div>
+            {onAccount && (
+              <MenuItem>
+                <button
+                  onClick={onAccount}
+                  className="mt-1 block w-full rounded px-2.5 py-1.5 text-left text-dim data-focus:bg-raise data-focus:text-text"
+                >
+                  Account
+                </button>
+              </MenuItem>
+            )}
             <MenuItem>
               <button
                 onClick={onSignOut}

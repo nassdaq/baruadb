@@ -8,6 +8,27 @@ export type Me = {
   is_admin: boolean;
   db_quota: number;
   created_at: string;
+  last_seen_at?: string | null;
+};
+
+export type Account = {
+  user: Me;
+  usage: { databases: number; branches: number; awake: number; archived: number; quota: number };
+  sessions: number;
+};
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  is_admin: boolean;
+  db_quota: number;
+  created_at: string;
+  last_seen_at: string | null;
+  databases: number;
+  branches: number;
+  awake: number;
+  connections: number;
 };
 
 export type Database = {
@@ -121,6 +142,10 @@ export const api = {
 
   boxes: () => call<Box[]>("/boxes"),
   adminStats: () => call<AdminStats>("/admin/stats"),
+  adminUsers: () => call<AdminUser[]>("/admin/users"),
+  account: () => call<Account>("/auth/account"),
+  updateAccount: (name: string) =>
+    call<{ user: Me }>("/auth/account", { method: "PATCH", body: JSON.stringify({ name }) }),
 };
 
 // ---------------------------------------------------------------- catalog

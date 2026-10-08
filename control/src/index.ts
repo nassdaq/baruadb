@@ -80,7 +80,8 @@ async function admin(req: Request, env: Env): Promise<void> {
 }
 
 /** The admin plane in the dashboard: the operator's token, or a user flagged
- *  as an admin. It exposes counts, never other people's data. */
+ *  as an admin. It can see who has an account and how much they use, never
+ *  what is inside anyone's database. */
 async function staff(req: Request, env: Env): Promise<Caller> {
   const c = await caller(req, env);
   if (c.kind === "admin" || (c.kind === "user" && c.isAdmin)) return c;
@@ -459,7 +460,56 @@ const userView = (u: User) => ({
   is_admin: u.is_admin === 1,
   db_quota: u.db_quota,
   created_at: u.created_at,
+  last_seen_at: u.last_seen_at,
 });
+
+/** A person's own page: who they are and how much of their allowance is used. */
+async function account(env: Env, c: Caller): Promise<Response> {
+  if (c.kind !== "user") throw new HttpError(401, "sign in to see your account");
+  const use = await env.DB.prepare(
+    `SELECT count(*) AS databases,
+            sum(CASE WHEN parent_id IS NOT NULL THEN 1 ELSE 0 END) AS branches,
+            sum(CASE WHEN running = 1 THEN 1 ELSE 0 END) AS awake,
+            sum(CASE WHEN location = 'cold' THEN 1 ELSE 0 END) AS archived
+       FROM databases WHERE owner = ?`).bind(c.id).first<Record<string, number | null>>();
+  const sessions = await env.DB.prepare(
+    "SELECT count(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?").bind(c.id, now()).first<{ n: number }>();
+  return json({
+    user: userView(c.user),
+    usage: {
+      databases: use?.databases ?? 0,
+      branches: use?.branches ?? 0,
+      awake: use?.awake ?? 0,
+      archived: use?.archived ?? 0,
+      quota: c.user.db_quota,
+    },
+    sessions: sessions?.n ?? 0,
+  });
+}
+
+async function updateAccount(req: Request, env: Env, c: Caller): Promise<Response> {
+  if (c.kind !== "user") throw new HttpError(401, "sign in to change your account");
+  const b = await body<{ name?: string }>(req);
+  const name = String(b.name ?? "").trim().slice(0, 100) || null;
+  await env.DB.prepare("UPDATE users SET name = ? WHERE id = ?").bind(name, c.id).run();
+  return json({ user: userView({ ...c.user, name }) });
+}
+
+/** Everyone with an account, with how much each is using. Emails and counts
+ *  only: an admin never sees inside another person's database from here. */
+async function adminUsers(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    `SELECT u.id, u.email, u.name, u.is_admin, u.db_quota, u.created_at, u.last_seen_at,
+            count(d.id)                                              AS databases,
+            coalesce(sum(CASE WHEN d.parent_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS branches,
+            coalesce(sum(d.running), 0)                              AS awake,
+            coalesce(sum(d.connections), 0)                          AS connections
+       FROM users u
+       LEFT JOIN databases d ON d.owner = u.id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC`).all<Record<string, unknown>>();
+  return json(results.map((r) => ({ ...r, is_admin: r.is_admin === 1 })));
+}
 
 async function signUp(req: Request, env: Env): Promise<Response> {
   if (env.SIGNUP === "closed") throw new HttpError(403, "sign-ups are closed");
@@ -564,12 +614,15 @@ async function route(req: Request, env: Env): Promise<Response> {
       if (c.kind !== "user") return json({ user: null, kind: c.kind });
       return json({ user: userView(c.user) });
     }
+    if (id === "account" && m === "GET") return account(env, await caller(req, env));
+    if (id === "account" && m === "PATCH") return updateAccount(req, env, await caller(req, env));
     throw new HttpError(404, "not found");
   }
 
   if (resource === "admin") {
     await staff(req, env);
     if (id === "stats" && m === "GET") return adminStats(env);
+    if (id === "users" && m === "GET") return adminUsers(env);
     throw new HttpError(404, "not found");
   }
 

@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
-import { api, type AdminStats, type Box } from "./api";
-import { ago, Card, Dot, Empty, ErrorNote, Stat } from "./components";
+import { api, type AdminStats, type AdminUser, type Box } from "./api";
+import { UsersIcon } from "@heroicons/react/24/outline";
+import { ago, Badge, Card, Dot, Empty, EmptyState, ErrorNote, Stat } from "./components";
 
-/** The admin plane: how much is being used, never whose. No one's databases,
- *  no one's data - just the numbers an operator needs. */
+/** The admin plane: who has an account and how much each person uses. It
+ *  stops at the door of their databases - names and counts, never contents. */
 export function Admin() {
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [boxes, setBoxes] = useState<Box[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     api.adminStats().then(setStats).catch((e) => setError(e.message));
+    api.adminUsers().then(setUsers).catch((e) => setError(e.message));
     // Only the operator's token can list boxes; an admin user simply sees none.
     api.boxes().then(setBoxes).catch(() => setBoxes([]));
   }, []);
@@ -23,7 +26,7 @@ export function Admin() {
       <h2 className="mb-5 text-[22px] font-semibold tracking-tight">Admin</h2>
 
       <Card className="mb-3.5 p-4">
-        <div className="flex flex-wrap gap-10">
+        <div className="grid grid-cols-4 gap-x-10 gap-y-6 lg:grid-cols-7">
           <Stat label="Users" value={stats.users.total} />
           <Stat label="Admins" value={stats.users.admins} />
           <Stat label="Databases" value={stats.databases.total} />
@@ -62,6 +65,58 @@ export function Admin() {
           })}
         </>
       )}
+
+      <div className="mb-2.5 mt-6 text-[12px] text-dim">Users</div>
+      <Card className="mb-3.5 overflow-hidden">
+        {users === null ? (
+          <div className="p-4 text-[13px] text-faint">…</div>
+        ) : users.length === 0 ? (
+          <EmptyState icon={UsersIcon} title="No one yet">
+            Accounts appear here as people sign up.
+          </EmptyState>
+        ) : (
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-line text-left text-[12px] text-dim">
+                <th className="px-4 py-2.5 font-normal">Person</th>
+                <th className="px-4 py-2.5 font-normal">Databases</th>
+                <th className="px-4 py-2.5 font-normal">Awake</th>
+                <th className="px-4 py-2.5 font-normal">Connections</th>
+                <th className="px-4 py-2.5 font-normal">Joined</th>
+                <th className="px-4 py-2.5 font-normal">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id} className="border-b border-line-soft last:border-0">
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="grid size-6 shrink-0 place-items-center rounded bg-accent/15 text-[11px] font-semibold text-accent">
+                        {u.email[0]?.toUpperCase()}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-medium">{u.name || u.email.split("@")[0]}</span>
+                          {u.is_admin && <Badge tone="accent">Admin</Badge>}
+                        </div>
+                        <div className="truncate text-xs text-faint">{u.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-dim">
+                    {u.databases} <span className="text-faint">/ {u.db_quota}</span>
+                    {u.branches > 0 && <span className="ml-1.5 text-xs text-faint">({u.branches} branch{u.branches === 1 ? "" : "es"})</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-dim">{u.awake}</td>
+                  <td className="px-4 py-2.5 text-dim">{u.connections}</td>
+                  <td className="px-4 py-2.5 text-dim">{ago(u.created_at)}</td>
+                  <td className="px-4 py-2.5 text-dim">{u.last_seen_at ? ago(u.last_seen_at) : "never"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
 
       <div className="mb-2.5 mt-6 text-[12px] text-dim">Sign-ups</div>
       <Card className="p-4">

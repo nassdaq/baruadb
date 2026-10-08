@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Database, type Me } from "./api";
+import { Account } from "./Account";
 import { Admin } from "./Admin";
 import { Button, Card, ConnectPanel, ErrorNote, Modal, TextField } from "./components";
 import { DatabaseSidebar, DatabaseView, type Section } from "./Database";
 import { Databases } from "./Databases";
-import { CircleStackIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
+import { CircleStackIcon, ShieldCheckIcon, UserCircleIcon } from "@heroicons/react/24/outline";
 import { NavGroup, NavLink, Shell } from "./Shell";
 import { BootScreen, Spinner } from "./Spinner";
 import { Palette, usePaletteShortcut } from "./Palette";
 
-/** Routing: the path is the state. /databases/<id>/<section> or /admin. */
+/** Routing: the path is the state. /databases/<id>/<section>, /account or /admin. */
 function usePath(): [string, (to: string) => void] {
   const [path, setPath] = useState(location.pathname);
   useEffect(() => {
@@ -82,6 +83,7 @@ export default function App() {
         <Shell
           me={me}
           onSignOut={signOut}
+          onAccount={() => go("/account")}
           onSearch={() => setPaletteOpen(true)}
           sidebar={
             <DatabaseSidebar
@@ -109,20 +111,28 @@ export default function App() {
     );
   }
 
-  // ---- the list, or admin
+  // ---- the list, the account page, or admin
   const onAdmin = path.startsWith("/admin");
+  const onAccount = path.startsWith("/account");
   return (
     <Shell
       me={me}
       onSignOut={signOut}
+      onAccount={() => go("/account")}
       onSearch={() => setPaletteOpen(true)}
       sidebar={
         <NavGroup title="Organization">
           <NavLink
             label="Databases"
             icon={<CircleStackIcon className="size-4" />}
-            active={!onAdmin}
+            active={!onAdmin && !onAccount}
             onClick={() => go("/")}
+          />
+          <NavLink
+            label="Account"
+            icon={<UserCircleIcon className="size-4" />}
+            active={onAccount}
+            onClick={() => go("/account")}
           />
           {me.is_admin && (
             <NavLink
@@ -140,6 +150,8 @@ export default function App() {
         <div className="p-8 text-[13px] text-faint">Loading database…</div>
       ) : onAdmin ? (
         <Admin />
+      ) : onAccount ? (
+        <Account me={me} onChanged={setMe} onDatabases={() => go("/")} />
       ) : (
         <Databases me={me} onOpen={(id) => go(`/databases/${id}/overview`)} />
       )}

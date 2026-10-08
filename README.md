@@ -10,9 +10,9 @@ branching and point-in-time restore, built from a few cheap parts:
 | **Linux boxes** (e.g. Linode) | Run Postgres only for the databases awake right now |
 
 ```
- Customer app ── postgresql://app:…@br-k3j9x2m1qa.pg.barua.tz/app ──► box :5432
+ Customer app ── postgresql://app:…@br-k3j9x2m1qa.pg.barua.app/app ──► box :5432
                                                                      (proxy wakes the DB)
- Dashboard / CLI ── https://pgapi.barua.tz ──► Worker + D1 ──HTTPS──► box agents
+ Dashboard / CLI ── https://console.barua.app ──► Worker + D1 ──HTTPS──► box agents
  Boxes ── snapshots + WAL every ≤10 s ──► R2
 ```
 
@@ -48,10 +48,10 @@ npx wrangler secret put JOIN_TOKEN    # long random string, lets boxes join
 # Needed from the 2nd box on (each database then gets its own DNS record):
 npx wrangler secret put CF_API_TOKEN  # Zone.DNS edit on barua.tz
 npx wrangler secret put CF_ZONE_ID
-npm run deploy                        # serves https://pgapi.barua.tz
+npm run deploy                        # serves https://console.barua.app
 ```
 
-DNS for one box: add `A  *.pg.barua.tz  → <box IP>` (DNS only, not proxied).
+DNS for one box: add `A  *.pg.barua.app  → <box IP>` (DNS only, not proxied).
 
 ### 2. Add a box (first one, and every one after)
 
@@ -70,7 +70,7 @@ whichever provider is authoritative for the domain: `CF_DNS_API_TOKEN` for
 Cloudflare, or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` for Route 53. Use an
 IAM user scoped to `route53:ChangeResourceRecordSets` on that one hosted zone.
 
-It installs Postgres 16, gets a wildcard certificate for `*.pg.barua.tz`,
+It installs Postgres 16, gets a wildcard certificate for `*.pg.barua.app`,
 installs the agent as a systemd service, and the box **joins the cluster by
 itself**. New databases are placed on the box with the most free memory.
 If the repository is private, pass `BARUA_BINARY_URL` (the CI build artifact)
@@ -79,18 +79,18 @@ instead of building from source.
 ### 3. Use it
 
 ```bash
-API=https://pgapi.barua.tz
+API=https://console.barua.app
 # admin: create an API key for a customer
 curl -X POST $API/v1/api-keys -H "Authorization: Bearer $ADMIN_TOKEN" -d '{"name":"juma"}'
 
 # customer: create a database
 curl -X POST $API/v1/databases -H "Authorization: Bearer $KEY" -d '{"name":"shop"}'
-# → { "connection_uri": "postgresql://app:…@br-k3j9x2m1qa.pg.barua.tz/app?sslmode=require", … }
+# → { "connection_uri": "postgresql://app:…@br-k3j9x2m1qa.pg.barua.app/app?sslmode=require", … }
 
-psql "postgresql://app:…@br-k3j9x2m1qa.pg.barua.tz/app?sslmode=require"
+psql "postgresql://app:…@br-k3j9x2m1qa.pg.barua.app/app?sslmode=require"
 
 # Pooled: many clients, few backends. Add -pooler to the host.
-psql "postgresql://app:…@br-k3j9x2m1qa-pooler.pg.barua.tz/app?sslmode=require"
+psql "postgresql://app:…@br-k3j9x2m1qa-pooler.pg.barua.app/app?sslmode=require"
 ```
 
 ## API

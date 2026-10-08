@@ -2,8 +2,12 @@ name = "barua-control"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 
-# The control plane API: https://pgapi.barua.tz
-routes = [{ pattern = "pgapi.barua.tz", custom_domain = true }]
+# barua.app is live on Cloudflare, so the Worker gets real names: the console
+# for people, the API for programs. Both are the same Worker.
+routes = [
+  { pattern = "console.barua.app", custom_domain = true },
+  { pattern = "api.barua.app", custom_domain = true },
+]
 
 # The dashboard: a Vite build in ui/dist, served straight from the edge. The
 # Worker still owns /v1 and /health; everything else falls through to the app,
@@ -22,9 +26,9 @@ database_id = "a2a6b339-27c8-4b02-9651-9b01e9432f06"
 crons = ["*/2 * * * *"] # mark silent boxes offline
 
 [vars]
-DB_DOMAIN = "pg.barua.tz"
+DB_DOMAIN = "pg.barua.app"
 # How the Worker reaches a box's agent API. {box} is the box id.
-AGENT_URL_TEMPLATE = "https://{box}.pg.barua.tz"
+AGENT_URL_TEMPLATE = "https://{box}.pg.barua.app"
 
 # Secrets (wrangler secret put <NAME>):
 #   ADMIN_TOKEN   - full access (create API keys, manage boxes)

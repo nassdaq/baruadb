@@ -12,14 +12,14 @@
 #   BARUA_JOIN_TOKEN            the control plane's JOIN_TOKEN secret
 #   BARUA_R2_ACCOUNT_ID, BARUA_R2_ACCESS_KEY_ID, BARUA_R2_SECRET_ACCESS_KEY
 # DNS credentials for the wildcard certificate (DNS-01) — one of:
-#   CF_DNS_API_TOKEN            Cloudflare token with Zone.DNS edit on barua.tz
+#   CF_DNS_API_TOKEN            Cloudflare token with Zone.DNS edit on the zone
 #   AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
 #                               an IAM user limited to route53:ChangeResourceRecordSets
 #                               on the hosted zone (never root keys)
 # Optional:
-#   BARUA_CONTROL_URL           default https://pgapi.barua.tz
+#   BARUA_CONTROL_URL           default https://console.barua.app
 #   BARUA_R2_BUCKET             default barua
-#   BARUA_DOMAIN                default pg.barua.tz
+#   BARUA_DOMAIN                default pg.barua.app
 #   BARUA_BOX_NAME              default: the hostname
 #   BARUA_BINARY_URL            prebuilt barua binary; otherwise built from source
 #   BARUA_GIT_REF               branch/tag to build from (default barua-db)
@@ -43,8 +43,8 @@ else
 fi
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 
-CONTROL_URL=${BARUA_CONTROL_URL:-https://pgapi.barua.tz}
-DOMAIN=${BARUA_DOMAIN:-pg.barua.tz}
+CONTROL_URL=${BARUA_CONTROL_URL:-https://console.barua.app}
+DOMAIN=${BARUA_DOMAIN:-pg.barua.app}
 BUCKET=${BARUA_R2_BUCKET:-baruadb}
 BOX_NAME=${BARUA_BOX_NAME:-$(hostname -s)}
 GIT_REF=${BARUA_GIT_REF:-barua-db}

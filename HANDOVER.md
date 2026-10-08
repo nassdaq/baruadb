@@ -16,8 +16,11 @@ proven, what isn't, and how to work on it without breaking it.
   - **Small Linode boxes:** compute.
 - Product feel must be Neon-like: a database URL per database, scale to zero,
   branching, point-in-time restore.
-- Domain: databases are at `<id>.pg.barua.tz`, the control plane API at
-  `pgapi.barua.tz`.
+- Domain: **barua.app**, which was already active on Cloudflare in the same
+  account. Databases are at `<id>.pg.barua.app`, the console and API at
+  `console.barua.app`. The `.tz` plan is abandoned: the registrar could not
+  change nameservers from its panel, and there was no reason to keep waiting
+  once a working zone existed.
   - `pg.`/`pgapi.` rather than `db.`/`api.` because **barua.tz also serves the
     owner's Barua *mail* product**: a wildcard `A *.barua.tz → 172.233.46.254`
     sends every other name to the mail box, and `api.barua.tz`, `db.barua.tz`,
@@ -146,7 +149,7 @@ docs/             ARCHITECTURE.md
 
 ### Known gaps / rough edges
 
-- **Connection pooling** is on `<id>-pooler.pg.barua.tz`: a PgBouncer per
+- **Connection pooling** is on `<id>-pooler.pg.barua.app`: a PgBouncer per
   database in transaction mode, started and stopped with its Postgres and
   charged to the same cgroup. Measured on one database: 40 direct connections
   cost 80 MB and 40 backends; the same 40 through the pooler cost 41 MB and 4
@@ -206,13 +209,13 @@ docs/             ARCHITECTURE.md
   Self-signed wildcard certificate:
   ```bash
   openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem \
-    -days 2 -subj "/CN=*.pg.barua.tz" -addext "subjectAltName=DNS:*.pg.barua.tz"
+    -days 2 -subj "/CN=*.pg.barua.app" -addext "subjectAltName=DNS:*.pg.barua.app"
   ```
   Connect with SNI but no DNS:
   ```bash
-  psql "host=<id>.pg.barua.tz hostaddr=127.0.0.1 port=15432 user=app dbname=app sslmode=require"
+  psql "host=<id>.pg.barua.app hostaddr=127.0.0.1 port=15432 user=app dbname=app sslmode=require"
   ```
-- Agent API: `curl -k --noproxy '*' --resolve box.pg.barua.tz:18443:127.0.0.1 https://box.pg.barua.tz:18443/v1/...`
+- Agent API: `curl -k --noproxy '*' --resolve box.pg.barua.app:18443:127.0.0.1 https://box.pg.barua.app:18443/v1/...`
   - **Sandboxes with an HTTPS proxy:** always pass `--noproxy '*'` / set
     `NO_PROXY='*'`, or local calls hang or get reset.
 - **Control plane locally:**

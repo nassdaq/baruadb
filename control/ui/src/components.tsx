@@ -67,7 +67,7 @@ export function Button({ children, variant = "default", size = "md", className, 
         size === "sm" ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-[13px]",
         "data-disabled:cursor-default data-disabled:opacity-40",
         "data-focus:outline-none data-focus:ring-2 data-focus:ring-accent/30 data-focus:ring-offset-0",
-        variant === "primary" && "border-transparent bg-text text-base data-hover:bg-white",
+        variant === "primary" && "border-transparent bg-text text-base data-hover:opacity-90",
         variant === "accent" && "border-accent/40 bg-accent/10 text-accent data-hover:bg-accent/15",
         variant === "danger" && "border-line text-text data-hover:border-rose/50 data-hover:text-rose",
         variant === "ghost" && "border-transparent text-dim data-hover:bg-raise data-hover:text-text",
@@ -298,7 +298,7 @@ export function Modal({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <DialogBackdrop className="fixed inset-0 bg-black/70" />
+          <DialogBackdrop className="fixed inset-0 bg-scrim" />
         </TransitionChild>
         <div className="fixed inset-0 flex items-start justify-center overflow-y-auto p-4 pt-[12vh]">
           <TransitionChild

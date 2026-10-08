@@ -1,8 +1,9 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { ChevronDownIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Me } from "./api";
 import { cx } from "./components";
+import { applyTheme, readTheme, type Theme } from "./theme";
 
 export { Mark } from "./Logo";
 import { Logo, Mark } from "./Logo";
@@ -31,6 +32,7 @@ export function Shell({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const [theme, setTheme] = useState<Theme>(readTheme);
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-[52px] shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
@@ -61,6 +63,27 @@ export function Shell({
             <div className="border-b border-line px-2.5 py-2">
               <div className="truncate text-[13px] text-text">{me.name || me.email.split("@")[0]}</div>
               <div className="truncate text-xs text-faint">{me.email}</div>
+            </div>
+            <div className="border-b border-line px-2.5 py-2">
+              <div className="mb-1.5 text-[10px] uppercase tracking-[0.08em] text-faint">Appearance</div>
+              <div className="grid grid-cols-3 gap-0.5 rounded-md bg-base p-0.5">
+                {(["system", "light", "dark"] as Theme[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      applyTheme(t);
+                      setTheme(t);
+                    }}
+                    className={cx(
+                      "rounded px-1.5 py-1 text-[12px] capitalize transition",
+                      theme === t ? "bg-raise text-text" : "text-dim hover:text-text",
+                    )}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
             {onAccount && (
               <MenuItem>

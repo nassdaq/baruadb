@@ -60,7 +60,7 @@ export function Palette({
 
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50">
-      <div className="fixed inset-0 bg-black/70" aria-hidden="true" />
+      <div className="fixed inset-0 bg-scrim" aria-hidden="true" />
       <div className="fixed inset-0 flex items-start justify-center p-4 pt-[14vh]">
         <DialogPanel className="w-full max-w-lg overflow-hidden rounded-xl border border-line bg-panel shadow-panel">
           <Combobox

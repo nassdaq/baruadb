@@ -26,12 +26,69 @@
   --color-sky: #60a5fa;
   --color-amber: #fbbf24;
   --color-rose: #f87171;
+  --color-violet: #a78bfa;
+  /* The scrim behind dialogs and the palette. */
+  --color-scrim: rgb(0 0 0 / 0.7);
 
   --font-sans: "Outfit Variable", ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
   /* Overlays sit above the page: a hairline, a soft ring, then a real shadow. */
   --shadow-panel: 0 16px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.04);
+}
+
+/* Light is the same console with the paper and the ink swapped. The system
+   decides, unless the person chose one in the account menu (data-theme on
+   <html>, set before first paint by index.html). The two blocks hold the
+   same values: CSS offers no way to say that once. */
+:root {
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --color-base: #f4f4f2;
+    --color-panel: #ffffff;
+    --color-raise: #efefed;
+    --color-hover: #e8e8e5;
+    --color-line: #e2e2df;
+    --color-line-soft: #ebebe8;
+    --color-edge: #cdcdc8;
+    --color-text: #121214;
+    --color-dim: #5b5b64;
+    --color-faint: #86868f;
+    --color-brand: #186f70;
+    --color-accent: #186f70;
+    --color-accent-dim: #125758;
+    --color-sky: #2563eb;
+    --color-amber: #b45309;
+    --color-rose: #dc2626;
+    --color-violet: #7c3aed;
+    --color-scrim: rgb(0 0 0 / 0.35);
+    --shadow-panel: 0 16px 48px -12px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.06);
+  }
+}
+:root[data-theme="light"] {
+    color-scheme: light;
+    --color-base: #f4f4f2;
+    --color-panel: #ffffff;
+    --color-raise: #efefed;
+    --color-hover: #e8e8e5;
+    --color-line: #e2e2df;
+    --color-line-soft: #ebebe8;
+    --color-edge: #cdcdc8;
+    --color-text: #121214;
+    --color-dim: #5b5b64;
+    --color-faint: #86868f;
+    --color-brand: #186f70;
+    --color-accent: #186f70;
+    --color-accent-dim: #125758;
+    --color-sky: #2563eb;
+    --color-amber: #b45309;
+    --color-rose: #dc2626;
+    --color-violet: #7c3aed;
+    --color-scrim: rgb(0 0 0 / 0.35);
+    --shadow-panel: 0 16px 48px -12px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.06);
 }
 
 html,

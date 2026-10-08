@@ -13,7 +13,14 @@ import { ago, Badge, Button, Card, cx, Dot, Empty, EmptyState, ErrorNote, Stat }
 import { DataGrid } from "./Grid";
 import { PageHead } from "./Shell";
 
-const C = { live: "#26b2b3", sky: "#60a5fa", amber: "#fbbf24", rose: "#f87171", violet: "#a78bfa" };
+// Chart colours come from the theme, so they follow light and dark.
+const C = {
+  live: "var(--color-accent)",
+  sky: "var(--color-sky)",
+  amber: "var(--color-amber)",
+  rose: "var(--color-rose)",
+  violet: "var(--color-violet)",
+};
 
 /** Counters are cumulative. A graph wants the rate, and a restarted Postgres
  *  resets its counters, so a drop is "no data" rather than a negative rate. */

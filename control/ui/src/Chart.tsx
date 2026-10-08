@@ -101,25 +101,25 @@ export function Chart({
         >
           {ticks.map((t, i) => (
             <g key={i}>
-              <line x1={PAD.l} x2={width - PAD.r} y1={y(t)} y2={y(t)} stroke="#1f1f23" strokeWidth="1" />
-              <text x={PAD.l - 6} y={y(t) + 3} textAnchor="end" className="fill-[#6a6a73] text-[9px]">
+              <line x1={PAD.l} x2={width - PAD.r} y1={y(t)} y2={y(t)} className="stroke-line-soft" strokeWidth="1" />
+              <text x={PAD.l - 6} y={y(t) + 3} textAnchor="end" className="fill-faint text-[9px]">
                 {format(t)}
               </text>
             </g>
           ))}
           {series.map((s, i) => (
             <g key={s.label}>
-              <path d={areas[i]} fill={s.color} opacity={0.14} />
-              <path d={paths[i]} fill="none" stroke={s.color} strokeWidth="1.5" />
+              <path d={areas[i]} style={{ fill: s.color }} opacity={0.14} />
+              <path d={paths[i]} fill="none" style={{ stroke: s.color }} strokeWidth="1.5" />
             </g>
           ))}
           {hover !== null && (
-            <line x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={H - PAD.b} stroke="#34343a" strokeWidth="1" />
+            <line x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={H - PAD.b} className="stroke-edge" strokeWidth="1" />
           )}
-          <text x={PAD.l} y={H - 5} className="fill-[#6a6a73] text-[9px]">
+          <text x={PAD.l} y={H - 5} className="fill-faint text-[9px]">
             {label(times[0]!)}
           </text>
-          <text x={width - PAD.r} y={H - 5} textAnchor="end" className="fill-[#6a6a73] text-[9px]">
+          <text x={width - PAD.r} y={H - 5} textAnchor="end" className="fill-faint text-[9px]">
             {label(times[times.length - 1]!)}
           </text>
         </svg>

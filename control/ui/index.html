@@ -1,9 +1,35 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BaruaDB</title>
+    <title>Barua Database</title>
+    <meta name="description" content="Your databases, in the browser. A free database for your app, ready in seconds." />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0c0c0d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 253 253'%3E%3Cpath fill='%2326B2B3' d='M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z'/%3E%3C/svg%3E" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Barua Database" />
+    <meta property="og:url" content="https://console.barua.app" />
+    <meta property="og:title" content="Barua Database" />
+    <meta property="og:description" content="A free database for your app. Ready in seconds, copies kept for you." />
+    <meta property="og:image" content="https://console.barua.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Barua Database: somewhere safe to keep your data." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Barua Database" />
+    <meta name="twitter:description" content="A free database for your app. Ready in seconds, copies kept for you." />
+    <meta name="twitter:image" content="https://console.barua.app/og.png" />
+    <script>
+      // Applied before paint so a chosen theme never flashes the other one.
+      try {
+        var t = localStorage.getItem("barua-theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

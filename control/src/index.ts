@@ -130,9 +130,10 @@ async function refresh(env: Env, db: DbRow): Promise<Record<string, unknown>> {
 
 // ---------------------------------------------------------------- views
 
-function connectionUri(env: Env, db: DbRow, password?: string): string {
+function connectionUri(env: Env, db: DbRow, password?: string, pooled = false): string {
   const pw = password ? `:${encodeURIComponent(password)}` : "";
-  return `postgresql://${db.role}${pw}@${db.id}.${env.DB_DOMAIN}/${db.dbname}?sslmode=require`;
+  const host = `${db.id}${pooled ? "-pooler" : ""}.${env.DB_DOMAIN}`;
+  return `postgresql://${db.role}${pw}@${host}/${db.dbname}?sslmode=require`;
 }
 
 function dbView(env: Env, db: DbRow, c: Caller) {
@@ -148,6 +149,9 @@ function dbView(env: Env, db: DbRow, c: Caller) {
     connections: db.connections,
     created_at: db.created_at,
     connection_uri: connectionUri(env, db),
+    // Transaction pooling: many clients, few backends. Session state does not
+    // survive a transaction, which is the price.
+    pooled_uri: connectionUri(env, db, undefined, true),
     ...(c.kind === "admin" ? { box_id: db.box_id, owner: db.owner } : {}),
   };
 }

@@ -146,7 +146,12 @@ docs/             ARCHITECTURE.md
 
 ### Known gaps / rough edges
 
-- **No connection pooler.** `<id>-pooler.pg.barua.tz` routes directly.
+- **Connection pooling** is on `<id>-pooler.pg.barua.tz`: a PgBouncer per
+  database in transaction mode, started and stopped with its Postgres and
+  charged to the same cgroup. Measured on one database: 40 direct connections
+  cost 80 MB and 40 backends; the same 40 through the pooler cost 41 MB and 4
+  backends. Session state does not cross a transaction boundary there - `SET`,
+  `LISTEN` and named prepared statements belong on the direct endpoint.
 - Branch-from-now when the parent is **asleep** uses target `latest`. Fine,
   but it replays the parent's whole archive after its newest snapshot.
 - Restores fetch WAL one segment per process spawn (`wal-fetch`). Slow for
@@ -169,13 +174,11 @@ docs/             ARCHITECTURE.md
 1. **Go live on one box.** Follow README "Setup" with the owner. Fix whatever
    breaks in `install.sh`, R2 and cgroups. Then load-test with a few busy
    DBs on a $5 and a $24 Linode and record real numbers for the owner.
-2. **Pooler (transaction mode)** behind `<id>-pooler`:
-   - The proxy must authenticate clients itself (SCRAM server side), hold a
-     small pool of backend connections per DB, and release them on
-     `ReadyForQuery` with status `I`.
-   - Document what breaks (session `SET`, named prepared statements,
-     `LISTEN`).
-   - This is the biggest RAM saver for busy apps.
+2. ~~**Pooler (transaction mode)** behind `<id>-pooler`.~~ Done, with
+   PgBouncer rather than by writing SCRAM into the proxy: it authenticates
+   clients itself and reaches Postgres over the socket pg_hba already trusts.
+   Still worth doing: surface pool saturation in Monitoring, and decide what
+   `default_pool_size` should be per plan.
 3. **Zero-loss durability:** two tiny WAL nodes (e.g. $5 boxes) as
    synchronous standbys (`synchronous_standby_names`), receiving WAL with
    `pg_receivewal`-like logic and shipping to R2.

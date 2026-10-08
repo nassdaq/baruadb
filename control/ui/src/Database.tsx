@@ -143,6 +143,11 @@ function Overview({ db }: { db: Database }) {
       <Card className="mb-4 p-5">
         <div className="mb-2 text-[13px] font-medium">Connection string</div>
         <CopyField value={db.connection_uri} />
+        <div className="mb-2 mt-4 text-[13px] font-medium">Pooled</div>
+        <CopyField value={db.pooled_uri} />
+        <p className="mt-1.5 text-xs text-faint">
+          Many clients, few backends. Transaction pooling, so session state does not cross a transaction boundary.
+        </p>
         <p className="mt-2.5 text-xs text-faint">
           The password appears once, when the database is created or its password reset.
         </p>

@@ -22,6 +22,7 @@ export type Database = {
   connections: number;
   created_at: string;
   connection_uri: string;
+  pooled_uri: string;
 };
 
 export type QueryResult = {

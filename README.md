@@ -88,6 +88,9 @@ curl -X POST $API/v1/databases -H "Authorization: Bearer $KEY" -d '{"name":"shop
 # → { "connection_uri": "postgresql://app:…@br-k3j9x2m1qa.pg.barua.tz/app?sslmode=require", … }
 
 psql "postgresql://app:…@br-k3j9x2m1qa.pg.barua.tz/app?sslmode=require"
+
+# Pooled: many clients, few backends. Add -pooler to the host.
+psql "postgresql://app:…@br-k3j9x2m1qa-pooler.pg.barua.tz/app?sslmode=require"
 ```
 
 ## API

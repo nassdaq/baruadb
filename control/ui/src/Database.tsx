@@ -20,6 +20,7 @@ import {
   Badge,
   Button,
   Card,
+  Confirm,
   ConnectPanel,
   cx,
   Dot,
@@ -174,7 +175,7 @@ function Overview({ db }: { db: Database }) {
         subtitle={
           <span className="inline-flex items-center gap-2">
             <Dot state={db.status === "ready" ? db.state : db.status} />
-            {db.status === "ready" ? db.state : db.status} · Linode EU (Amsterdam) · Postgres 16
+            {db.status === "ready" ? db.state : db.status} · Europe (Amsterdam) · Postgres 16
           </span>
         }
       />
@@ -320,13 +321,13 @@ function BranchDialog({
             />
             <p className={cx("mb-2 text-xs", tooEarly ? "text-rose" : "text-faint")}>
               {earliest
-                ? `Earliest point held in R2: ${new Date(earliest).toLocaleString()}`
-                : "No snapshots yet, so only branching from now will work."}
+                ? `Earliest point you can go back to: ${new Date(earliest).toLocaleString()}`
+                : "No saved copies yet, so only branching from now will work."}
             </p>
           </>
         )}
         <p className="mb-3 text-xs text-faint">
-          A branch is a whole copy restored from R2, with its own storage and connection string. It does not share pages
+          A branch is a whole copy taken from a saved point, with its own storage and connection string. It does not share pages
           with its parent.
         </p>
         <div className="flex gap-2">
@@ -372,7 +373,7 @@ function Backups({ db }: { db: Database }) {
     <>
       <PageHead
         title="Backup & Restore"
-        subtitle="Snapshots and write-ahead log live in R2. Branch from any moment inside the window to recover."
+        subtitle="Every change is kept for a week. Branch from any moment inside that window to recover."
       />
       {error && <ErrorNote>{error}</ErrorNote>}
       <Card className="mb-4 p-5">
@@ -465,6 +466,7 @@ function TablesConsole({ db }: { db: Database }) {
   const [sort, setSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Filter[]>([]);
   const [selection, setSelection] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -579,13 +581,13 @@ function TablesConsole({ db }: { db: Database }) {
       : null;
 
   const deleteSelected = async () => {
+    setConfirmDelete(false);
     if (!table || !rows || selection.size === 0 || pk.length === 0) return;
     const at = (name: string) => rows.columns.indexOf(name);
     const chosen = [...selection].map((i) => rows.rows[i]!);
     const where = chosen
       .map((row) => "(" + pk.map((k) => `${ident(k)} = ${literal(row[at(k)] ?? "")}`).join(" and ") + ")")
       .join(" or ");
-    if (!confirm(`Delete ${chosen.length} ${chosen.length === 1 ? "row" : "rows"}? This cannot be undone.`)) return;
     try {
       await run(`delete from ${ident(schema)}.${ident(table)} where ${where}`, 1);
       setRows((prev) => (prev ? { ...prev, rows: prev.rows.filter((_, i) => !selection.has(i)) } : prev));
@@ -741,8 +743,18 @@ function TablesConsole({ db }: { db: Database }) {
             <SelectionBar
               count={selection.size}
               onClear={() => setSelection(new Set())}
-              onDelete={deleteSelected}
+              onDelete={() => setConfirmDelete(true)}
             />
+
+            <Confirm
+              open={confirmDelete}
+              onClose={() => setConfirmDelete(false)}
+              onConfirm={deleteSelected}
+              title={`Delete ${selection.size} ${selection.size === 1 ? "row" : "rows"}?`}
+            >
+              {selection.size === 1 ? "This row is" : "These rows are"} removed from {table} straight away. This
+              cannot be undone.
+            </Confirm>
             <div className="min-h-0 flex-1 overflow-auto">
               {error && <div className="p-3"><ErrorNote>{error}</ErrorNote></div>}
               {busy ? (

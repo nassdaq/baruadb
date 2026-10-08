@@ -28,7 +28,7 @@ export function Admin() {
           <Stat label="Admins" value={stats.users.admins} />
           <Stat label="Databases" value={stats.databases.total} />
           <Stat label="Awake" value={stats.databases.awake} />
-          <Stat label="Cold in R2" value={stats.databases.cold} />
+          <Stat label="Archived" value={stats.databases.cold} />
           <Stat label="Failed" value={stats.databases.failed} />
           <Stat label="Connections" value={stats.databases.connections} />
         </div>

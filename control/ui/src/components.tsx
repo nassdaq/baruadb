@@ -321,6 +321,88 @@ export function Modal({
   );
 }
 
+/** Asking before something irreversible. The browser's own confirm() does this
+ *  too, but it says "console.barua.app says" and offers no way to explain what
+ *  is about to happen — so we ask ourselves. The destructive button is never
+ *  the one focus lands on. */
+export function Confirm({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  verb = "Delete",
+  danger = true,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  verb?: string;
+  danger?: boolean;
+  children?: ReactNode;
+}) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) setBusy(false); }, [open]);
+
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      <div className="flex gap-4">
+        {danger && <ExclamationTriangleIcon className="mt-0.5 size-10 shrink-0 text-rose/70" />}
+        {children && <div className="text-[13px] leading-relaxed text-dim">{children}</div>}
+      </div>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant={danger ? "danger" : "primary"}
+          disabled={busy}
+          onClick={() => { setBusy(true); onConfirm(); }}
+        >
+          {busy ? "Working…" : verb}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** One field and two buttons, for the places that used to call prompt(). */
+export function Ask({
+  open,
+  onClose,
+  onSubmit,
+  title,
+  label,
+  placeholder,
+  verb = "Create",
+  hint,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (value: string) => void;
+  title: string;
+  label: string;
+  placeholder?: string;
+  verb?: string;
+  hint?: string;
+}) {
+  const [value, setValue] = useState("");
+  useEffect(() => { if (open) setValue(""); }, [open]);
+
+  const send = () => { const v = value.trim(); if (v) onSubmit(v); };
+
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      <form onSubmit={(e) => { e.preventDefault(); send(); }}>
+        <TextField label={label} value={value} onChange={setValue} placeholder={placeholder} hint={hint} autoFocus />
+        <div className="mt-6 flex justify-end gap-2">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="accent" disabled={!value.trim()}>{verb}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 // ---------------------------------------------------------------- misc
 
 export const Empty = ({ children }: { children: ReactNode }) => (

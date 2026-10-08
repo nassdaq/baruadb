@@ -310,13 +310,13 @@ function SystemOperations({ db, samples }: { db: Database; samples: MetricSample
 
   const events = [
     ...transitions.map((t) => ({ at: t.at, what: t.what, kind: "compute" })),
-    ...(points ?? []).map((p) => ({ at: p.taken_at, what: `snapshot to R2 (${p.kind})`, kind: "storage" })),
+    ...(points ?? []).map((p) => ({ at: p.taken_at, what: `copy saved (${p.kind})`, kind: "storage" })),
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
   if (events.length === 0)
     return (
       <EmptyState icon={ClockIcon} title="Nothing recorded in this window">
-        Wakes, sleeps and snapshots appear here. Try a longer range.
+        Wakes, sleeps and saved copies appear here. Try a longer range.
       </EmptyState>
     );
   return (

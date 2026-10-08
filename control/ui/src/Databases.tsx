@@ -5,11 +5,13 @@ import {
   Badge,
   Button,
   Card,
+  Confirm,
   CopyField,
   cx,
   Dot,
   EmptyState,
   ErrorNote,
+  Ask,
   Modal,
   RowMenu,
   SearchBox,
@@ -30,6 +32,8 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
   const [page, setPage] = useState(0);
   const [creating, setCreating] = useState(false);
   const [secret, setSecret] = useState<{ title: string; uri: string } | null>(null);
+  const [branching, setBranching] = useState<Database | null>(null);
+  const [deleting, setDeleting] = useState<Database | null>(null);
 
   const load = () => api.databases().then(setList).catch((e) => setError(String(e.message ?? e)));
   useEffect(() => {
@@ -77,7 +81,7 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
         <div className="flex flex-wrap gap-8">
           <Stat label="Databases" value={list?.length ?? "—"} hint="Every database you own, branches included" />
           <Stat label="Awake" value={awake} hint="Running right now on a box" />
-          <Stat label="Cold" value={cold} hint="Living in R2 only, restored on the next connection" />
+          <Stat label="Cold" value={cold} hint="Archived, and restored on the next connection" />
           <Stat label="Connections" value={connections} hint="Open client connections" />
           <Stat label="Quota" value={`${list?.length ?? 0} / ${me.db_quota}`} />
         </div>
@@ -141,7 +145,7 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
                       {d.parent_id ? <Badge>Branch</Badge> : <Badge tone="accent">Primary</Badge>}
                     </button>
                   </td>
-                  <td className="px-4 py-2.5 text-dim">Linode EU (Amsterdam)</td>
+                  <td className="px-4 py-2.5 text-dim">Europe (Amsterdam)</td>
                   <td className="px-4 py-2.5 text-dim">{ago(d.created_at)}</td>
                   <td className="px-4 py-2.5">
                     <span className="inline-flex items-center gap-2 text-dim">
@@ -156,13 +160,7 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
                       items={[
                         { label: "Open", onClick: () => onOpen(d.id) },
                         { label: "Copy connection string", onClick: () => navigator.clipboard.writeText(d.connection_uri) },
-                        {
-                          label: "Create branch",
-                          onClick: () => {
-                            const name = prompt("Branch name");
-                            if (name) act(() => api.branch(d.id, name));
-                          },
-                        },
+                        { label: "Create branch", onClick: () => setBranching(d) },
                         {
                           label: "Reset password",
                           onClick: () =>
@@ -171,13 +169,7 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
                               setSecret({ title: `New password for ${d.name}`, uri: r.connection_uri });
                             }),
                         },
-                        {
-                          label: "Delete",
-                          danger: true,
-                          onClick: () => {
-                            if (confirm(`Delete ${d.name} and its history in R2?`)) act(() => api.deleteDatabase(d.id));
-                          },
-                        },
+                        { label: "Delete", danger: true, onClick: () => setDeleting(d) },
                       ]}
                     />
                   </td>
@@ -209,9 +201,37 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
       <div className="mt-8 flex items-center justify-center gap-3 text-xs text-faint">
         <span>Connect with psql:</span>
         <code className="rounded-md border border-line bg-panel px-2.5 py-1.5 font-mono text-dim">
-          psql "postgresql://…@&lt;id&gt;.pg.barua.tz/app?sslmode=require"
+          psql "postgresql://…@&lt;id&gt;.pg.barua.app/app?sslmode=require"
         </code>
       </div>
+
+      <Ask
+        open={branching !== null}
+        onClose={() => setBranching(null)}
+        title={branching ? `Branch ${branching.name}` : "Create branch"}
+        label="Branch name"
+        placeholder="staging"
+        hint="A branch is a full copy of the data as it is right now, with its own connection string."
+        onSubmit={(name) => {
+          const from = branching;
+          setBranching(null);
+          if (from) act(() => api.branch(from.id, name));
+        }}
+      />
+
+      <Confirm
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Delete ${deleting.name}?` : "Delete database"}
+        onConfirm={() => {
+          const d = deleting;
+          setDeleting(null);
+          if (d) act(() => api.deleteDatabase(d.id));
+        }}
+      >
+        The database and everything in it goes, along with every saved copy, so there will be nothing left to
+        restore from. This cannot be undone.
+      </Confirm>
 
       <CreateDialog
         open={creating}
@@ -296,7 +316,7 @@ function CreateDialog({
       >
         <TextField label="Name" value={name} onChange={setName} placeholder="shop" autoFocus />
         <div className="mb-4 rounded-md border border-line bg-base px-3 py-2.5 text-xs text-dim">
-          Postgres 16 · Linode EU (Amsterdam) · sleeps after 5 idle minutes
+          Postgres 16 · Europe (Amsterdam) · sleeps after 5 idle minutes
         </div>
         <div className="flex items-center gap-2">
           <Button type="submit" variant="accent" disabled={busy}>

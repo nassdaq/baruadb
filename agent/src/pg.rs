@@ -90,13 +90,39 @@ pub fn valid_name(s: &str) -> bool {
         && s.as_bytes()[0].is_ascii_lowercase()
 }
 
-const HBA: &str = "\
+/// `pg_hba.conf`. The maintenance role has no password and only ever
+/// arrives over the box-local socket; the reject lines make that a rule
+/// rather than a consequence, so a customer typing its name into a client
+/// is refused before any password is looked at.
+fn hba() -> String {
+    format!(
+        "\
 # Managed by barua. Admin access only over the box-local unix socket.
 local all all trust
 local replication all trust
+host all {admin} 0.0.0.0/0 reject
+host all {admin} ::/0 reject
 host all all 127.0.0.1/32 scram-sha-256
 host all all ::1/128 scram-sha-256
-";
+",
+        admin = ADMIN_ROLE
+    )
+}
+
+/// What a customer sees when they open their database in a client is the
+/// whole cluster: every role and every database, including ours. Postgres
+/// cannot hide a role name, so the next best thing: say plainly what it is,
+/// and close the doors around it. Idempotent; run on creation and after
+/// every wake, so databases from before this get it too.
+fn tidy_sql() -> String {
+    format!(
+        "COMMENT ON ROLE {admin} IS 'Barua Database maintenance role: takes backups and handles sleep and wake. Not for use by applications.';
+REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;
+REVOKE CONNECT ON DATABASE template1 FROM PUBLIC;
+COMMENT ON DATABASE postgres IS 'Maintenance database used by Barua. Your data is not here.';",
+        admin = ident(ADMIN_ROLE)
+    )
+}
 
 impl App {
     fn exe(&self) -> Result<String> {
@@ -124,7 +150,7 @@ impl App {
         let mut text = tokio::fs::read_to_string(&conf).await?;
         text.push_str("\ninclude_if_exists 'barua.conf'\n");
         tokio::fs::write(&conf, text).await?;
-        tokio::fs::write(tmp.join("pg_hba.conf"), HBA).await?;
+        tokio::fs::write(tmp.join("pg_hba.conf"), hba()).await?;
         tokio::fs::rename(&tmp, &dir).await?;
         info!("template cluster ready");
         Ok(())
@@ -179,7 +205,7 @@ impl App {
         c.push(String::new());
         let pgdata = self.pgdata(&db.id);
         tokio::fs::write(pgdata.join("barua.conf"), c.join("\n")).await?;
-        tokio::fs::write(pgdata.join("pg_hba.conf"), HBA).await?;
+        tokio::fs::write(pgdata.join("pg_hba.conf"), hba()).await?;
         Ok(())
     }
 
@@ -309,12 +335,25 @@ impl App {
                 "restored cold database from storage"
             );
         } else if !self.probe_running(id).await {
+            // Both files are derived from config and the record: writing them
+            // on every start means a changed knob reaches old databases too.
+            self.write_conf(&db, None).await?;
             self.start_pg(id).await?;
         }
         rt.set_running(true);
         rt.touch();
         self.update_db(id, |d| d.last_used_at = Utc::now())?;
         info!(db = id, ms = started.elapsed().as_millis() as u64, "database awake");
+        // A few milliseconds over the local socket; never a reason to fail
+        // the wake a client is waiting on.
+        match self.admin_client(&db, "postgres").await {
+            Ok(c) => {
+                if let Err(e) = c.batch_execute(&tidy_sql()).await {
+                    warn!(db = id, "catalog tidy failed: {e:#}");
+                }
+            }
+            Err(e) => warn!(db = id, "catalog tidy: no admin connection: {e:#}"),
+        }
         self.db(id)
     }
 
@@ -454,6 +493,7 @@ impl App {
         admin
             .batch_execute(&format!("CREATE DATABASE {} OWNER {}", ident(database), ident(role)))
             .await?;
+        admin.batch_execute(&tidy_sql()).await?;
         let c = self.admin_client(&db, database).await?;
         c.batch_execute(&format!("ALTER SCHEMA public OWNER TO {}", ident(role)))
             .await?;

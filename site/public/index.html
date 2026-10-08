@@ -10,6 +10,8 @@
 <meta property="og:title" content="Barua Database">
 <meta property="og:description" content="A free database for your app. Ready in seconds, copies kept for you, built in Dar es Salaam.">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#09090a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f3f1" media="(prefers-color-scheme: light)">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 253 253'%3E%3Cpath fill='%2326B2B3' d='M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,6 +23,7 @@
   --hair:rgba(255,255,255,.07);
   --dim:rgba(255,255,255,.5);
   --faint:rgba(255,255,255,.3);
+  --ink:#fff;
   --gap:clamp(14px, 2.2vw, 34px);
   --pad:clamp(1.5rem, 7vw, 7rem);
   --dur-2:300ms; --dur-4:900ms; --dur-5:1200ms;
@@ -29,6 +32,7 @@
   --ease-quart:cubic-bezier(.77,0,.175,1);
 }
 @media (prefers-reduced-motion: reduce){ :root{ --dur-2:0ms; --dur-4:0ms; --dur-5:0ms; } }
+
 
 *{ box-sizing:border-box; }
 html,body{ height:100%; }
@@ -62,7 +66,7 @@ a{ color:inherit; text-decoration:none; }
 .brand svg{ width:22px; height:22px; color:var(--accent); }
 .brand b{ font-weight:500; letter-spacing:-.02em; }
 .brand span{ color:var(--dim); font-weight:400; }
-.bar--bottom a:hover{ color:#fff; }
+.bar--bottom a:hover{ color:var(--ink); }
 
 /* internal rules: the frame is divided into columns that stay put while the words move */
 .rules{ grid-area:2/1; z-index:2; pointer-events:none; display:grid;
@@ -140,6 +144,30 @@ h2{ font-size:clamp(2rem, 6.4vw, 5.2rem); max-width:18ch; }
   .lines strong{ font-size:clamp(1.2rem,2.4vw,1.7rem); }
 }
 @media (max-width:560px){ .bar--bottom .hide-sm{ display:none; } }
+
+/* Light is the same page with the paper and the ink swapped. */
+@media (prefers-color-scheme: light){
+  :root{
+    --accent:#186F70;
+    --ink:#0b0b0c;
+    --edge:rgba(0,0,0,.15);
+    --hair:rgba(0,0,0,.08);
+    --dim:rgba(0,0,0,.54);
+    --faint:rgba(0,0,0,.34);
+  }
+  body{ background:#f3f3f1; color:var(--ink); }
+  .glow{ background:
+    radial-gradient(42% 38% at 50% -8%,  rgba(24,111,112,.17), transparent 70%),
+    radial-gradient(46% 42% at 50% 108%, rgba(24,111,112,.13), transparent 72%); }
+  .grain{ opacity:.05; mix-blend-mode:multiply; }
+  .frame{ background:rgba(255,255,255,.66); }
+  .scroll{ scrollbar-color:rgba(0,0,0,.17) transparent; }
+  .scroll::-webkit-scrollbar-thumb{ background:rgba(0,0,0,.17); }
+  .btn--solid{ background:#0b0b0c; color:#fff; }
+  .btn--solid:hover{ background:rgba(11,11,12,.84); }
+  .btn--line:hover{ background:rgba(0,0,0,.05); border-color:rgba(0,0,0,.3); }
+}
+
 </style>
 </head>
 <body>
@@ -204,6 +232,15 @@ h2{ font-size:clamp(2rem, 6.4vw, 5.2rem); max-width:18ch; }
         <li data-reveal><strong>Read your own rows.</strong><span>Open it in the browser like a spreadsheet. Fix a wrong number yourself.</span></li>
         <li data-reveal><strong>Take it with you.</strong><span>One button downloads the whole thing as a file. Nothing locks you in.</span></li>
         <li data-reveal><strong>It rests when you do.</strong><span>Quiet for five minutes and it sleeps, waking the moment someone visits.</span></li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2 data-reveal>Starting takes <span class="soft">about a minute.</span></h2>
+      <ul class="lines" style="margin-top:clamp(2rem,5vh,3.5rem)">
+        <li data-reveal><strong>Make an account.</strong><span>An email and a password. There is no form after that one.</span></li>
+        <li data-reveal><strong>Press create.</strong><span>Name it, and a few seconds later the database is yours and running.</span></li>
+        <li data-reveal><strong>Paste the address.</strong><span>One line goes into your app. Anything that speaks Postgres already understands it.</span></li>
       </ul>
     </section>
 

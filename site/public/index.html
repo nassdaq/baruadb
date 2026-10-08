@@ -10,19 +10,20 @@
 <meta property="og:title" content="Barua Database">
 <meta property="og:description" content="A free database for your app. Ready in seconds, copies kept for you, built in Dar es Salaam.">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 253 253'%3E%3Cpath fill='%2326B2B3' d='M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --brand:#186F70; --accent:#26B2B3;
+  --accent:#26B2B3;
   --edge:rgba(255,255,255,.14);
   --hair:rgba(255,255,255,.07);
-  --dim:rgba(255,255,255,.55);
-  --faint:rgba(255,255,255,.32);
+  --dim:rgba(255,255,255,.5);
+  --faint:rgba(255,255,255,.3);
   --gap:clamp(14px, 2.2vw, 34px);
-  --pad:clamp(1.25rem, 5vw, 5rem);
-  --dur-2:300ms; --dur-4:750ms; --dur-5:1200ms;
+  --pad:clamp(1.5rem, 7vw, 7rem);
+  --dur-2:300ms; --dur-4:900ms; --dur-5:1200ms;
   --ease-out:cubic-bezier(.16,1,.3,1);
   --ease-quad:cubic-bezier(.455,.03,.515,.955);
   --ease-quart:cubic-bezier(.77,0,.175,1);
@@ -37,17 +38,16 @@ body{
   letter-spacing:-.01em; -webkit-font-smoothing:antialiased;
 }
 a{ color:inherit; text-decoration:none; }
-:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; border-radius:6px; }
-.sr{ position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); }
+:focus-visible{ outline:2px solid var(--accent); outline-offset:4px; border-radius:6px; }
 
 .glow{ position:fixed; inset:0; z-index:0; pointer-events:none;
   background:
-    radial-gradient(42% 38% at 50% -8%,  rgba(38,178,179,.26), transparent 70%),
-    radial-gradient(46% 42% at 50% 108%, rgba(24,111,112,.30), transparent 72%); }
-.grain{ position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.08;
+    radial-gradient(42% 38% at 50% -8%,  rgba(38,178,179,.24), transparent 70%),
+    radial-gradient(46% 42% at 50% 108%, rgba(24,111,112,.28), transparent 72%); }
+.grain{ position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.07;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='180' height='180' filter='url(%23n)' opacity='.6'/></svg>"); }
 
-/* ── the frame stays put; the middle of it scrolls ─────────────────────── */
+/* the frame holds still; its middle scrolls */
 .frame{
   position:fixed; inset:var(--gap); z-index:1;
   border:1px solid var(--edge); border-radius:clamp(10px, 1.4vw, 20px);
@@ -60,109 +60,75 @@ a{ color:inherit; text-decoration:none; }
 .bar--bottom{ border-top:1px solid var(--hair); color:var(--faint); }
 .brand{ display:flex; align-items:center; gap:.55rem; }
 .brand svg{ width:22px; height:22px; color:var(--accent); }
-.brand b{ font-weight:600; letter-spacing:-.02em; }
+.brand b{ font-weight:500; letter-spacing:-.02em; }
 .brand span{ color:var(--dim); font-weight:400; }
-.region{ display:inline-flex; align-items:center; gap:.45rem; color:var(--dim); }
-.region .pip{ width:6px; height:6px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
-.mono{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
 .bar--bottom a:hover{ color:#fff; }
 
-.scroll{ overflow-y:auto; overflow-x:hidden; scroll-behavior:smooth; scrollbar-width:thin;
-  scrollbar-color:rgba(255,255,255,.18) transparent; }
+.scroll{ overflow-y:auto; overflow-x:hidden; scroll-behavior:smooth;
+  scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.14) transparent; }
 .scroll::-webkit-scrollbar{ width:9px; }
-.scroll::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.16); border-radius:999px;
+.scroll::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.14); border-radius:999px;
   border:3px solid transparent; background-clip:content-box; }
 @media (prefers-reduced-motion: reduce){ .scroll{ scroll-behavior:auto; } }
 
-/* ── hero: still exactly one screenful ─────────────────────────────────── */
-.hero{ min-height:100%; display:grid; place-items:center; text-align:center;
-  padding:clamp(2rem,6vh,4rem) var(--pad) clamp(3rem,8vh,5rem); position:relative; }
-.hero__in{ display:flex; flex-direction:column; align-items:center; gap:clamp(1.1rem,2.2vw,1.7rem); }
-h1{ margin:0; font-weight:500; letter-spacing:-.04em; line-height:.98; text-wrap:balance;
-  font-size:clamp(2.4rem, 7.6vw, 6.6rem); }
-h1 .soft{ color:var(--dim); font-weight:300; }
-.sub{ margin:0; max-width:42ch; color:var(--dim); font-size:clamp(1rem,1.4vw,1.18rem); line-height:1.55; }
+/* every panel is one screenful of words */
+.panel{ min-height:100%; display:grid; align-content:center; padding:clamp(3rem,10vh,6rem) var(--pad); }
+.panel + .panel{ border-top:1px solid var(--hair); }
+.panel--center{ justify-items:center; text-align:center; }
 
-.cta{ display:flex; flex-wrap:wrap; gap:.6rem; justify-content:center; }
+/* the words */
+h1,h2{ margin:0; font-weight:500; letter-spacing:-.045em; line-height:.95; text-wrap:balance; }
+h1{ font-size:clamp(2.5rem, 8vw, 7rem); }
+h2{ font-size:clamp(2rem, 6.4vw, 5.2rem); max-width:18ch; }
+.soft{ color:var(--dim); font-weight:300; }
+.note{ margin:1.6rem 0 0; max-width:40ch; color:var(--dim); font-weight:300;
+  font-size:clamp(1rem,1.5vw,1.3rem); line-height:1.5; }
+.panel--center .note{ margin-left:auto; margin-right:auto; }
+
+/* the capability list: big lines across the full width, no boxes */
+.lines{ display:grid; gap:clamp(1.3rem,3.2vh,2.3rem); margin:0; padding:0; list-style:none; }
+.lines li{ display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);
+  gap:clamp(1rem,4vw,4rem); align-items:baseline; }
+.lines strong{ font-weight:500; letter-spacing:-.035em; line-height:1.05;
+  font-size:clamp(1.4rem,3.2vw,2.4rem); }
+.lines span{ color:var(--dim); font-weight:300;
+  font-size:clamp(.9375rem,1.2vw,1.0625rem); line-height:1.5; max-width:38ch; }
+@media (max-width:760px){ .lines li{ grid-template-columns:1fr; gap:.4rem; } }
+
+.free{ font-size:clamp(4rem,16vw,13rem); font-weight:300; letter-spacing:-.05em; line-height:.85; }
+
+.cta{ display:flex; flex-wrap:wrap; gap:.75rem; margin-top:2.5rem; }
+.panel--center .cta{ justify-content:center; }
 .btn{ display:inline-flex; align-items:center; gap:.5rem; border-radius:999px;
-  padding:.68rem 1.35rem; font-size:.9375rem; font-weight:500;
+  padding:.72rem 1.45rem; font-size:.9375rem; font-weight:500;
   transition:background var(--dur-2) var(--ease-quad), border-color var(--dur-2) var(--ease-quad), transform 150ms var(--ease-quad); }
 .btn:active{ transform:scale(.98); }
 .btn--solid{ background:#fff; color:#000; }
 .btn--solid:hover{ background:rgba(255,255,255,.88); }
-.btn--line{ border:1px solid var(--edge); color:#fff; }
+.btn--line{ border:1px solid var(--edge); }
 .btn--line:hover{ background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.28); }
 .btn svg{ width:15px; height:15px; }
 
-.facts{ display:flex; flex-wrap:wrap; justify-content:center; gap:clamp(1.1rem,3vw,2.6rem);
-  color:var(--faint); font-size:.8125rem; }
-.fact{ display:inline-flex; align-items:center; gap:.5rem; }
-.fact svg{ width:15px; height:15px; color:var(--accent); opacity:.85; }
+.made{ margin:3rem 0 0; color:var(--faint); font-size:.8125rem; font-weight:300; }
 
-.scroll-cue{ position:absolute; bottom:clamp(1rem,3vh,2rem); left:50%; transform:translateX(-50%);
-  display:inline-flex; flex-direction:column; align-items:center; gap:.4rem;
-  color:var(--faint); font-size:.75rem; letter-spacing:.04em; }
-.scroll-cue svg{ width:14px; height:14px; animation:nudge 2.4s var(--ease-quad) infinite; }
-@keyframes nudge{ 0%,100%{ transform:translateY(0); opacity:.6 } 50%{ transform:translateY(3px); opacity:1 } }
-@media (prefers-reduced-motion: reduce){ .scroll-cue svg{ animation:none; } }
-
-/* ── the sections below ────────────────────────────────────────────────── */
-section{ padding:clamp(3rem,9vh,6rem) var(--pad); border-top:1px solid var(--hair); }
-.inner{ max-width:62rem; margin:0 auto; }
-.eyebrow{ margin:0 0 1.25rem; font-size:.75rem; font-weight:600; letter-spacing:.14em;
-  text-transform:uppercase; color:var(--faint); font-family:ui-monospace,Menlo,monospace; }
-h2{ margin:0 0 1rem; font-weight:500; letter-spacing:-.03em; line-height:1.08;
-  font-size:clamp(1.65rem,3.4vw,2.7rem); text-wrap:balance; }
-.lede{ margin:0; max-width:56ch; color:var(--dim); font-size:clamp(1rem,1.3vw,1.1rem); line-height:1.6; }
-.lede + .lede{ margin-top:1rem; }
-.lede b{ color:#fff; font-weight:500; }
-
-.cards{ display:grid; grid-template-columns:1fr; gap:1px; margin-top:2.25rem;
-  background:var(--hair); border:1px solid var(--hair); border-radius:14px; overflow:hidden; }
-@media (min-width:700px){ .cards{ grid-template-columns:repeat(2,1fr); } }
-.card{ background:#0b0b0c; padding:clamp(1.25rem,2.4vw,1.75rem);
-  transition:background var(--dur-2) var(--ease-quad); }
-.card:hover{ background:#101011; }
-.card svg{ width:20px; height:20px; color:var(--accent); }
-.card h3{ margin:.85rem 0 .35rem; font-size:1rem; font-weight:600; letter-spacing:-.02em; }
-.card p{ margin:0; color:var(--dim); font-size:.9375rem; line-height:1.55; }
-
-.steps{ counter-reset:s; display:grid; grid-template-columns:1fr; gap:1.5rem; margin-top:2.25rem; }
-@media (min-width:760px){ .steps{ grid-template-columns:repeat(3,1fr); gap:2rem; } }
-.step{ position:relative; padding-top:2.6rem; }
-.step::before{ counter-increment:s; content:counter(s);
-  position:absolute; top:0; left:0; display:grid; place-items:center;
-  width:1.9rem; height:1.9rem; border-radius:999px; border:1px solid rgba(38,178,179,.35);
-  color:var(--accent); font-size:.8125rem; font-weight:600; }
-.step h3{ margin:0 0 .35rem; font-size:1rem; font-weight:600; letter-spacing:-.02em; }
-.step p{ margin:0; color:var(--dim); font-size:.9375rem; line-height:1.55; }
-
-.price{ display:flex; flex-wrap:wrap; align-items:baseline; gap:.75rem; margin:0 0 1rem; }
-.price .big{ font-size:clamp(2.4rem,6vw,4rem); font-weight:500; letter-spacing:-.04em; line-height:1; }
-.price .unit{ color:var(--dim); font-size:1rem; }
-.list{ margin:1.5rem 0 0; padding:0; list-style:none; display:grid; gap:.7rem; max-width:46ch; }
-.list li{ display:flex; gap:.7rem; align-items:flex-start; color:var(--dim); font-size:.9375rem; line-height:1.5; }
-.list svg{ width:16px; height:16px; margin-top:.2rem; flex:none; color:var(--accent); }
-
-.end{ text-align:center; }
-.end h2{ margin-bottom:1.5rem; }
-.closing{ padding-bottom:clamp(3rem,10vh,6rem); }
-.made{ margin:2.5rem 0 0; color:var(--faint); font-size:.8125rem; }
-
-[data-reveal]{ opacity:0; transform:translateY(1rem);
+/* motion */
+[data-reveal]{ opacity:0; transform:translateY(1.2rem);
   transition:opacity var(--dur-4) var(--ease-quad), transform var(--dur-4) var(--ease-quart); }
 [data-reveal].in{ opacity:1; transform:none; }
-@media (prefers-reduced-motion: reduce){ [data-reveal]{ opacity:1; transform:none; } }
-
 [data-rise]{ animation:rise var(--dur-5) var(--ease-out) both; }
-@keyframes rise{ from{ opacity:0; transform:translateY(.7rem); } to{ opacity:1; transform:none; } }
-[data-rise="1"]{ animation-delay:0s } [data-rise="2"]{ animation-delay:.1s }
-[data-rise="3"]{ animation-delay:.2s } [data-rise="4"]{ animation-delay:.3s }
-[data-rise="5"]{ animation-delay:.4s }
-@media (prefers-reduced-motion: reduce){ [data-rise]{ animation:none; } }
+@keyframes rise{ from{ opacity:0; transform:translateY(.8rem); } to{ opacity:1; transform:none; } }
+[data-rise="1"]{ animation-delay:0s } [data-rise="2"]{ animation-delay:.12s }
+[data-rise="3"]{ animation-delay:.24s } [data-rise="4"]{ animation-delay:.36s }
+@media (prefers-reduced-motion: reduce){
+  [data-reveal]{ opacity:1; transform:none; } [data-rise]{ animation:none; }
+}
 
-@media (max-height:600px){ .facts,.scroll-cue{ display:none; } h1{ font-size:clamp(1.9rem,6vw,3rem); } }
-@media (max-width:520px){ .bar--bottom .hide-sm{ display:none; } .facts{ gap:.9rem; } }
+@media (max-height:620px){
+  h1{ font-size:clamp(1.9rem,6vw,3rem); } h2{ font-size:clamp(1.5rem,5vw,2.4rem); }
+  .free{ font-size:clamp(2.75rem,9vw,6rem); }
+  .lines strong{ font-size:clamp(1.2rem,2.4vw,1.7rem); }
+}
+@media (max-width:560px){ .bar--bottom .hide-sm{ display:none; } }
 </style>
 </head>
 <body>
@@ -176,184 +142,82 @@ h2{ margin:0 0 1rem; font-weight:500; letter-spacing:-.03em; line-height:1.08;
       <svg viewBox="0 0 253 253" fill="none" aria-hidden="true"><path fill="currentColor" d="M2.83691e-06 126.042C0.0394249 92.6254 13.3314 60.5891 36.9603 36.9603C60.5892 13.3314 92.6254 0.0394221 126.042 0C129.081 0 131.995 1.20721 134.144 3.35607C136.293 5.50492 137.5 8.41939 137.5 11.4583C137.5 14.4973 136.293 17.4117 134.144 19.5606C131.995 21.7095 129.081 22.9167 126.042 22.9167C110.719 22.9298 95.5921 26.3573 81.7604 32.9498C67.9286 39.5424 55.7397 49.1343 46.0799 61.0284C36.4202 72.9224 29.5322 86.8195 25.9169 101.709C22.3015 116.599 22.0497 132.108 25.1796 147.107C28.3096 162.107 34.7427 176.22 44.0112 188.421C53.2797 200.623 65.1507 210.605 78.7611 217.644C92.3715 224.682 107.379 228.599 122.693 229.109C138.007 229.62 153.243 226.712 167.292 220.596C168.678 219.939 170.183 219.567 171.716 219.503C173.249 219.438 174.779 219.682 176.216 220.22C177.653 220.758 178.967 221.579 180.081 222.635C181.194 223.691 182.084 224.959 182.698 226.365C183.312 227.771 183.638 229.287 183.655 230.821C183.673 232.355 183.382 233.877 182.8 235.297C182.218 236.717 181.357 238.005 180.267 239.086C179.178 240.166 177.883 241.017 176.458 241.587C157.275 249.96 136.309 253.423 115.452 251.664C94.5956 249.906 74.5052 242.981 56.9946 231.515C39.484 220.049 25.1045 204.403 15.1541 185.989C5.20362 167.575 -0.00443746 146.972 2.83691e-06 126.042ZM176.458 10.4958C175.072 9.83889 173.567 9.46712 172.034 9.40258C170.501 9.33805 168.971 9.58207 167.534 10.1202C166.097 10.6582 164.783 11.4794 163.669 12.535C162.556 13.5906 161.666 14.8591 161.052 16.2653C160.438 17.6714 160.112 19.1866 160.095 20.7208C160.077 22.2551 160.368 23.7772 160.95 25.1969C161.532 26.6166 162.393 27.905 163.483 28.9856C164.572 30.0662 165.867 30.917 167.292 31.4875C182.611 38.1689 196.077 48.4735 206.531 61.5142C216.984 74.5549 224.111 89.9409 227.298 106.347C230.486 122.754 229.637 139.689 224.827 155.695C220.017 171.701 211.388 186.298 199.684 198.229C198.606 199.298 197.751 200.571 197.168 201.973C196.586 203.376 196.289 204.88 196.293 206.398C196.297 207.917 196.603 209.419 197.193 210.819C197.783 212.218 198.645 213.486 199.729 214.549C200.814 215.612 202.099 216.449 203.509 217.011C204.92 217.573 206.428 217.849 207.946 217.824C209.465 217.798 210.963 217.47 212.353 216.86C213.744 216.25 214.999 215.37 216.047 214.271C230.347 199.688 240.889 181.849 246.766 162.289C252.643 142.728 253.679 122.033 249.784 101.984C245.889 81.9342 237.18 63.1318 224.406 47.1947C211.633 31.2576 195.178 18.6633 176.458 10.4958Z"/></svg>
       <span><b>Barua</b> <span>Database</span></span>
     </a>
-    <span class="region mono" data-rise="1"><span class="pip"></span> eu-ams-1</span>
+    <a href="https://console.barua.app" style="color:var(--dim)" data-rise="1">Sign in</a>
   </div>
 
   <div class="scroll" id="scroll">
     <div id="top"></div>
 
-    <!-- 1 · the one idea -->
-    <div class="hero">
-      <div class="hero__in">
-        <h1 data-rise="2">Somewhere safe<br><span class="soft">to keep your data.</span></h1>
-        <p class="sub" data-rise="3">
-          Every app, shop and tool needs a place to remember things — customers, orders, bookings,
-          messages. Barua gives you that place in a few seconds, keeps a spare copy of it for you,
-          and asks for nothing while nobody is using it.
-        </p>
-        <div class="cta" data-rise="4">
-          <a class="btn btn--solid" href="https://console.barua.app">
-            Create a database
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </a>
-          <a class="btn btn--line" href="https://console.barua.app">Sign in</a>
-        </div>
-        <div class="facts" data-rise="5">
-          <span class="fact">
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.5v13M4.5 5 8 1.5 11.5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11.5v2h12v-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            Ready in seconds
-          </span>
-          <span class="fact">
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.8 2.8 4v4c0 3.1 2.2 5.4 5.2 6.2 3-0.8 5.2-3.1 5.2-6.2V4L8 1.8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="m5.9 8 1.5 1.5 2.9-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Copies kept for you
-          </span>
-          <span class="fact">
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.6v3.6l2.3 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Nothing to run or maintain
-          </span>
-        </div>
-      </div>
-      <a class="scroll-cue" href="#what" aria-label="Read what it is">
-        <span>What it is</span>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </a>
-    </div>
-
-    <!-- 2 · what it actually is -->
-    <section id="what">
-      <div class="inner">
-        <p class="eyebrow" data-reveal>What it is</p>
-        <h2 data-reveal>A database is where your app keeps everything it must not forget.</h2>
-        <p class="lede" data-reveal>
-          Names, prices, bookings, messages, who paid and who did not. A spreadsheet holds that until
-          two people open it at once, or it reaches ten thousand rows, or the laptop it lives on is
-          lost. A database holds it <b>for as many people as you like, at the same time, from
-          anywhere</b> — and it is what every real app sits on top of.
-        </p>
-        <p class="lede" data-reveal>
-          Normally you would rent a server, install the software, set up backups, watch it for
-          trouble and pay every month whether anyone used it or not. <b>Barua does all of that
-          part.</b> You ask for a database, you get an address and a password, and you give those to
-          whoever is building your app.
-        </p>
+    <section class="panel panel--center">
+      <h1 data-rise="2">Somewhere safe<br><span class="soft">to keep your data.</span></h1>
+      <p class="note" data-rise="3">
+        Free to use. Ready in a few seconds. Nothing to install, nothing to run.
+      </p>
+      <div class="cta" data-rise="4">
+        <a class="btn btn--solid" href="https://console.barua.app">
+          Create a database
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
       </div>
     </section>
 
-    <!-- 3 · what you get -->
-    <section>
-      <div class="inner">
-        <p class="eyebrow" data-reveal>What you get</p>
-        <h2 data-reveal>Everything the boring part needs, already done.</h2>
-
-        <div class="cards">
-          <div class="card" data-reveal>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.5v13M4.5 5 8 1.5 11.5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11.5v2h12v-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            <h3>Ready in seconds</h3>
-            <p>Click once. You get an address and a password, and it is live. No server to rent, nothing to install.</p>
-          </div>
-
-          <div class="card" data-reveal>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.8 2.8 4v4c0 3.1 2.2 5.4 5.2 6.2 3-0.8 5.2-3.1 5.2-6.2V4L8 1.8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="m5.9 8 1.5 1.5 2.9-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <h3>A spare copy, always</h3>
-            <p>Your data is copied off the machine continuously. If something is deleted by mistake, you can go back to how things were on Tuesday at 09:14.</p>
-          </div>
-
-          <div class="card" data-reveal>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M2 6.5h12M6.5 6.5V13" stroke="currentColor" stroke-width="1.4"/></svg>
-            <h3>Look at your data yourself</h3>
-            <p>Open it in your browser and read the rows like a spreadsheet. Change a wrong phone number, search for an order, without asking a developer.</p>
-          </div>
-
-          <div class="card" data-reveal>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 10.5V2.5M4.5 7 8 10.5 11.5 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12v1.5h12V12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            <h3>It stays yours</h3>
-            <p>One button downloads the whole thing as a file you can keep or take elsewhere. Nothing locks you in.</p>
-          </div>
-
-          <div class="card" data-reveal>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.6v3.6l2.3 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <h3>It rests when you do</h3>
-            <p>After five quiet minutes it stops, and wakes the moment someone visits. That is why a quiet month costs nothing.</p>
-          </div>
-
-          <div class="card" data-reveal>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 2.5v6a3 3 0 0 0 3 3h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="4.5" cy="13" r="1.6" stroke="currentColor" stroke-width="1.4"/><circle cx="4.5" cy="3" r="1.6" stroke="currentColor" stroke-width="1.4"/><circle cx="12.5" cy="11.5" r="1.6" stroke="currentColor" stroke-width="1.4"/></svg>
-            <h3>A copy to practise on</h3>
-            <p>Make a duplicate of today's data in a moment, try something risky on it, and leave the real one untouched.</p>
-          </div>
-        </div>
-      </div>
+    <section class="panel">
+      <h2 data-reveal>Your app has to <span class="soft">remember things.</span></h2>
+      <p class="note" data-reveal>
+        Customers, orders, bookings, messages, who paid and who did not.
+        That is what a database is for.
+      </p>
     </section>
 
-    <!-- 4 · how you'd use it -->
-    <section>
-      <div class="inner">
-        <p class="eyebrow" data-reveal>How you use it</p>
-        <h2 data-reveal>Three steps, and the last one is not yours.</h2>
-        <div class="steps">
-          <div class="step" data-reveal>
-            <h3>Make an account</h3>
-            <p>An email and a password. Nothing to install and no card.</p>
-          </div>
-          <div class="step" data-reveal>
-            <h3>Create a database</h3>
-            <p>Give it a name. In a few seconds you are handed an address and a password.</p>
-          </div>
-          <div class="step" data-reveal>
-            <h3>Hand it to your developer</h3>
-            <p>They paste it into the app and it works — it is ordinary Postgres, which they already know.</p>
-          </div>
-        </div>
-      </div>
+    <section class="panel">
+      <h2 data-reveal>A spreadsheet stops working <span class="soft">the moment two people open it.</span></h2>
+      <p class="note" data-reveal>
+        A database does not. It serves as many people as you like, at the same time, from anywhere.
+      </p>
     </section>
 
-    <!-- 5 · what it costs -->
-    <section>
-      <div class="inner">
-        <p class="eyebrow" data-reveal>What it costs</p>
-        <div class="price" data-reveal>
-          <span class="big">Free</span>
-          <span class="unit">to use, today, for anyone.</span>
-        </div>
-        <p class="lede" data-reveal>
-          Anyone with data to keep can sign up and use this. There is no card, no trial clock and no
-          sales call. The limits are small and stated here rather than discovered later.
-        </p>
-        <ul class="list" data-reveal>
-          <li>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Three databases per account.
-          </li>
-          <li>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Copies of your data kept for seven days, so you can go back to any moment in that week.
-          </li>
-          <li>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            One location today, in Amsterdam. More when there are people who need them.
-          </li>
-        </ul>
-      </div>
+    <section class="panel">
+      <h2 data-reveal>Normally you would rent a server <span class="soft">and look after it forever.</span></h2>
+      <p class="note" data-reveal>
+        Install it, secure it, back it up, watch it, and pay every month whether anyone used it or
+        not. We do that part.
+      </p>
     </section>
 
-    <!-- 6 · close -->
-    <section class="end closing">
-      <div class="inner">
-        <h2 data-reveal>Give your data somewhere to live.</h2>
-        <div class="cta" data-reveal style="justify-content:center">
-          <a class="btn btn--solid" href="https://console.barua.app">
-            Create a database
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </a>
-        </div>
-        <p class="made" data-reveal>Barua is Swahili for letter. Built in Dar es Salaam.</p>
+    <section class="panel">
+      <ul class="lines">
+        <li data-reveal><strong>Ready in seconds.</strong><span>Click once and you have an address and a password.</span></li>
+        <li data-reveal><strong>A spare copy, always.</strong><span>Deleted something by mistake? Go back to how it was on Tuesday at 09:14.</span></li>
+        <li data-reveal><strong>Read your own rows.</strong><span>Open it in the browser like a spreadsheet. Fix a wrong number yourself.</span></li>
+        <li data-reveal><strong>Take it with you.</strong><span>One button downloads the whole thing as a file. Nothing locks you in.</span></li>
+        <li data-reveal><strong>It rests when you do.</strong><span>Quiet for five minutes and it sleeps, waking the moment someone visits.</span></li>
+      </ul>
+    </section>
+
+    <section class="panel panel--center">
+      <div class="free" data-reveal>Free</div>
+      <p class="note" data-reveal>
+        For anyone, today. Three databases an account, a week of copies, and one home in Amsterdam.
+        No card, no trial running out.
+      </p>
+    </section>
+
+    <section class="panel panel--center">
+      <h2 data-reveal>Give your data <span class="soft">somewhere to live.</span></h2>
+      <div class="cta" data-reveal>
+        <a class="btn btn--solid" href="https://console.barua.app">
+          Create a database
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn btn--line" href="https://console.barua.app">Sign in</a>
       </div>
+      <p class="made" data-reveal>Barua is Swahili for letter. Built in Dar es Salaam.</p>
     </section>
 
   </div>
 
   <div class="bar bar--bottom">
-    <span class="hide-sm">Three databases per account, free. Works with the tools your developer already uses.</span>
+    <span class="hide-sm">Free to use · three databases an account</span>
     <span><a href="https://console.barua.app">Open the console</a></span>
   </div>
 
@@ -364,24 +228,17 @@ h2{ margin:0 0 1rem; font-weight:500; letter-spacing:-.03em; line-height:1.08;
   const root = document.getElementById('scroll');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const targets = document.querySelectorAll('[data-reveal]');
-
   if (reduce) { targets.forEach(t => t.classList.add('in')); return; }
 
-  // the scroller is the frame's middle, not the window
   const io = new IntersectionObserver((entries, obs) => {
-    entries.forEach(e => {
-      if (!e.isIntersecting) return;
-      e.target.classList.add('in');
-      obs.unobserve(e.target);
-    });
-  }, { root, threshold: .12, rootMargin: '0px 0px -8% 0px' });
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); obs.unobserve(e.target); } });
+  }, { root, threshold: .2, rootMargin: '0px 0px -10% 0px' });
 
   targets.forEach((el, i) => {
-    el.style.transitionDelay = `${(i % 4) * 0.06}s`;
+    el.style.transitionDelay = `${(i % 5) * 0.07}s`;
     io.observe(el);
   });
 
-  // in-frame anchors have to scroll the frame, not the page
   document.querySelectorAll('a[href^="#"]').forEach(a => {
     a.addEventListener('click', e => {
       const node = document.querySelector(a.getAttribute('href'));

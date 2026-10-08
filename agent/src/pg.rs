@@ -255,6 +255,13 @@ impl App {
             }
             let up = db.location == Location::Local && self.probe_running(&id).await;
             self.runtime(&id).set_running(up);
+            // Postgres outlives the agent (KillMode=process), so a database
+            // found running was started under whatever limits the previous
+            // agent had. Limits are a box setting: write today's into its
+            // live cgroup, which the kernel applies at once.
+            if up {
+                self.cgroups.prepare(&id, &self.cfg.db_memory_max, &self.cfg.db_cpu_max);
+            }
         }
         Ok(())
     }

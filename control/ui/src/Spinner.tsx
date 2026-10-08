@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import "./vector-spinner";
 
 type State = "loading" | "success" | "error" | "idle";
+type ErrorIcon = "angry" | "x";
 
 /** The brand loader. Attributes are set imperatively so the element keeps its
  *  own animation timeline across React renders. */
@@ -14,6 +15,7 @@ export function Spinner({
   noSheen,
   label,
   className,
+  errorIcon,
   onSuccess,
 }: {
   state?: State;
@@ -23,6 +25,8 @@ export function Spinner({
   noSheen?: boolean;
   label?: string;
   className?: string;
+  /** What the error state shows: the angry face (default) or a plain cross. */
+  errorIcon?: ErrorIcon;
   /** Fired once the success animation has fully played (after the intro, if
    *  that is still running), so a screen can wait for the mark to finish. */
   onSuccess?: () => void;
@@ -50,6 +54,7 @@ export function Spinner({
     ...(intro ? { intro: "" } : {}),
     ...(noSheen ? { "no-sheen": "" } : {}),
     ...(label ? { label } : {}),
+    ...(errorIcon ? { "error-icon": errorIcon } : {}),
   };
   const Tag = "vector-spinner" as unknown as React.ElementType;
   return <Tag {...props} />;

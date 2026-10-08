@@ -9,6 +9,8 @@ import { CircleStackIcon, ShieldCheckIcon, UserCircleIcon } from "@heroicons/rea
 import { NavGroup, NavLink, Shell } from "./Shell";
 import { BootScreen, Spinner } from "./Spinner";
 import { Palette, usePaletteShortcut } from "./Palette";
+import { PHONE, useMediaQuery } from "./media";
+import { TooSmall } from "./TooSmall";
 
 /** Routing: the path is the state. /databases/<id>/<section>, /account or /admin. */
 function usePath(): [string, (to: string) => void] {
@@ -34,6 +36,7 @@ export default function App() {
   const [all, setAll] = useState<Database[]>([]);
 
   usePaletteShortcut(useCallback(() => setPaletteOpen(true), []));
+  const phone = useMediaQuery(PHONE);
 
   useEffect(() => {
     api.me().then((r) => setMe(r.user)).catch(() => setMe(null));
@@ -65,6 +68,9 @@ export default function App() {
     return () => clearInterval(t);
   }, [dbId, signedIn, loadDb]);
 
+  // A phone gets the mark's opinion of phones, signed in or not: the console
+  // has nothing honest to show at that width.
+  if (phone) return <TooSmall />;
   // The first paint of the session: the mark draws itself in while we find out
   // who is signed in.
   if (me === undefined) return <BootScreen />;

@@ -1,0 +1,13 @@
+# The landing page. Static only: no code, no bindings, nothing to attack.
+# The console is a different Worker on console.barua.app.
+name = "barua-site"
+compatibility_date = "2025-09-01"
+
+routes = [
+  { pattern = "barua.app", custom_domain = true },
+  { pattern = "www.barua.app", custom_domain = true },
+]
+
+[assets]
+directory = "./public"
+not_found_handling = "404-page"

@@ -52,6 +52,13 @@ pub struct DbRecord {
     pub created_at: DateTime<Utc>,
     pub last_used_at: DateTime<Utc>,
     pub last_snapshot_at: Option<DateTime<Utc>>,
+    /// Where WAL stood when that snapshot ended; the snapshotter measures
+    /// new WAL against it. Absent for databases from before this existed.
+    #[serde(default)]
+    pub last_snapshot_lsn: Option<crate::lsn::Lsn>,
+    /// This database's `archive_timeout` in seconds; `None` is the box default.
+    #[serde(default)]
+    pub archive_timeout_secs: Option<u32>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

@@ -47,15 +47,19 @@ the cluster grows by adding boxes.
 
 ## Durability
 
-- `initdb --wal-segsize=1` (1 MB segments) and `archive_timeout = 10`:
+- `initdb --wal-segsize=1` (1 MB segments) and `archive_timeout = 10`
+  (`BARUA_ARCHIVE_TIMEOUT_SECS`; a database can be created with its own):
   Postgres closes a segment at least every 10 seconds when there were writes,
   and `archive_command` (`barua wal-push`) compresses it with zstd and puts it
   in R2. Idle databases write nothing.
 - **A box that dies loses at most ~10 seconds of commits** (verified by a
   `kill -9` test: a commit 12 s before the crash survived, one 0 s before did
   not). Planned: synchronous WAL to two tiny "WAL nodes" for zero loss.
-- Snapshots: on creation, every `BARUA_SNAPSHOT_EVERY_HOURS` while awake, and
-  on eviction. They bound how much WAL a restore replays.
+- Snapshots: on creation; then whenever an awake database has written
+  `BARUA_SNAPSHOT_AFTER_WAL_MB` (256 MB) since its last one, and at least every
+  `BARUA_SNAPSHOT_EVERY_HOURS` (a week); and on eviction. They bound how much
+  WAL a restore replays. A quiet database earns none, so it costs nothing to
+  keep: no daily `pg_basebackup`, no upload, no extra copies.
 - Retention: snapshots and WAL older than `BARUA_RETENTION_DAYS` are pruned,
   always keeping the newest snapshot before the window.
 
@@ -98,7 +102,8 @@ thousands of sessions as Tokio tasks on two worker threads.
 ## Cluster
 
 - A box joins with `JOIN_TOKEN` and gets its own agent token; it heartbeats
-  every 20 s with capacity (free memory, disk, awake databases).
+  every 20 s with capacity (free memory, disk, awake databases) and only the
+  databases whose state changed, so control-plane writes follow what is awake.
 - New databases go to the online, active box with the most headroom;
   branches prefer the parent's box.
 - One box: a wildcard DNS record is enough. More boxes: the Worker creates an

@@ -1,5 +1,6 @@
--- One row per database per sample. Heartbeats arrive every 20 seconds; the
--- control plane keeps roughly one a minute so a week of history stays small.
+-- One row per running database per sample. Heartbeats arrive every 20
+-- seconds; the control plane keeps roughly one a minute per awake database,
+-- plus a single row when one falls asleep, so a week of history stays small.
 CREATE TABLE IF NOT EXISTS metrics (
   db_id        TEXT NOT NULL,
   at           TEXT NOT NULL,          -- ISO 8601

@@ -382,7 +382,11 @@ const METRIC_DAYS = 7;
 /** Heartbeats are every 20 seconds, which is finer than any graph needs.
  *  Keep about one sample a minute so a week of history stays cheap. */
 async function recordMetrics(env: Env, beats: BeatDb[]): Promise<void> {
-  if (beats.length === 0) return;
+  // A sleeping database has no backend and no counters: nothing to record.
+  // It gets exactly one row at the moment it falls asleep (changed, not
+  // running) so a graph can draw the edge, then silence until it wakes.
+  const worth = beats.filter((d) => d.running || d.changed !== false);
+  if (worth.length === 0) return;
   const at = now();
   const cutoff = new Date(Date.now() - SAMPLE_EVERY_MS).toISOString();
   const recent = await env.DB.prepare(
@@ -390,7 +394,8 @@ async function recordMetrics(env: Env, beats: BeatDb[]): Promise<void> {
   ).bind(cutoff).all<{ db_id: string; last: string }>();
   const seen = new Set(recent.results.map((r) => r.db_id));
 
-  const rows = beats.filter((d) => !seen.has(d.id));
+  // Running databases are sampled about once a minute; an edge is always kept.
+  const rows = worth.filter((d) => !d.running || !seen.has(d.id));
   if (rows.length === 0) return;
   await env.DB.batch(
     rows.map((d) =>
@@ -421,11 +426,16 @@ async function heartbeat(req: Request, env: Env, id: string): Promise<Response> 
       `UPDATE boxes SET cpus = ?, mem_total_mb = ?, mem_available_mb = ?, disk_free_mb = ?, databases_awake = ?,
          last_seen = ?, status = CASE WHEN status = 'offline' THEN 'active' ELSE status END WHERE id = ?`,
     ).bind(s.cpus ?? 0, s.mem_total_mb ?? 0, s.mem_available_mb ?? 0, s.disk_free_mb ?? 0, s.databases_awake ?? 0, now(), id),
-    ...(b.databases ?? []).map((d) =>
-      env.DB.prepare(
-        "UPDATE databases SET status = ?, location = ?, running = ?, connections = ? WHERE id = ? AND box_id = ?",
-      ).bind(d.status, d.location, d.running ? 1 : 0, d.connections, d.id, id),
-    ),
+    // A row is rewritten only for a database that moved. The agent leaves
+    // unchanged sleeping databases out of the beat altogether, so what D1
+    // writes here scales with what is awake, not with what exists.
+    ...(b.databases ?? [])
+      .filter((d) => d.changed !== false)
+      .map((d) =>
+        env.DB.prepare(
+          "UPDATE databases SET status = ?, location = ?, running = ?, connections = ? WHERE id = ? AND box_id = ?",
+        ).bind(d.status, d.location, d.running ? 1 : 0, d.connections, d.id, id),
+      ),
   ];
   await env.DB.batch(stmts);
   await recordMetrics(env, b.databases ?? []);
@@ -589,6 +599,10 @@ type BeatDb = {
   location: string;
   running: boolean;
   connections: number;
+  /** Set by the agent when status/location/running/connections moved since
+   *  the beat we last accepted. Absent from older agents, which reads as
+   *  "always", so they keep working. */
+  changed?: boolean;
   memory_bytes?: number;
   cpu_usec?: number;
   pg?: Record<string, number>;

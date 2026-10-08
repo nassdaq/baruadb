@@ -155,9 +155,13 @@ impl App {
                 "archive_command = {}",
                 conf_str(&format!("{exe} wal-push --db {} %p %f", db.id))
             ),
-            // Close a segment at least every 10 s when there was activity, so
-            // a lost box loses at most ~10 s of commits.
-            "archive_timeout = 10".into(),
+            // Close a segment at least this often when there was activity:
+            // a lost box loses at most this many seconds of commits, and R2
+            // sees at most one PUT per interval.
+            format!(
+                "archive_timeout = {}",
+                db.archive_timeout_secs.unwrap_or(self.cfg.archive_timeout_secs)
+            ),
             "log_line_prefix = '%m [%p] %q%u@%d '".into(),
         ];
         if let Some((source, target)) = restore {
@@ -479,9 +483,24 @@ impl App {
         .await;
         let _ = tokio::fs::remove_dir_all(&tmp).await;
         let info = res?;
-        self.update_db(id, |d| d.last_snapshot_at = Some(info.taken_at))?;
+        self.update_db(id, |d| {
+            d.last_snapshot_at = Some(info.taken_at);
+            d.last_snapshot_lsn = Some(info.end_lsn);
+        })?;
         info!(db = id, key = info.key, "snapshot uploaded");
         Ok(info)
+    }
+
+    /// Bytes of WAL written since the last snapshot ended, read from the
+    /// running server. `u64::MAX` when no snapshot has recorded an LSN yet,
+    /// so such a database is snapshotted at the next opportunity.
+    pub async fn wal_since_snapshot(&self, db: &DbRecord) -> Result<u64> {
+        let Some(base) = db.last_snapshot_lsn else {
+            return Ok(u64::MAX);
+        };
+        let c = self.admin_client(db, "postgres").await?;
+        let cur: String = c.query_one("SELECT pg_current_wal_lsn()::text", &[]).await?.get(0);
+        Ok(cur.parse::<Lsn>()?.0.saturating_sub(base.0))
     }
 
     /// Close the current WAL segment and wait until it is in storage.
@@ -640,6 +659,7 @@ impl App {
         self.update_db(id, |d| {
             d.location = Location::Cold;
             d.last_snapshot_at = Some(info.taken_at);
+            d.last_snapshot_lsn = Some(info.end_lsn);
         })?;
         info!(db = id, "database evicted to storage");
         Ok(true)

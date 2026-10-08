@@ -136,6 +136,9 @@ struct CreateReq {
     password: Option<String>,
     parent: Option<String>,
     restore: Option<RestoreReq>,
+    /// How often WAL is shipped for this database (seconds); the box default
+    /// when absent. The control plane sets it per plan.
+    archive_timeout_secs: Option<u32>,
 }
 
 async fn create(
@@ -168,6 +171,8 @@ async fn create(
         created_at: Utc::now(),
         last_used_at: Utc::now(),
         last_snapshot_at: None,
+        last_snapshot_lsn: None,
+        archive_timeout_secs: req.archive_timeout_secs.filter(|s| (1..=3600).contains(s)),
     };
     app.update_meta(|m| {
         if m.databases.contains_key(&db.id) {

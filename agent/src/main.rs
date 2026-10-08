@@ -94,7 +94,9 @@ fn main() -> Result<()> {
     })
 }
 
-async fn serve(cfg: Config) -> Result<()> {
+async fn serve(mut cfg: Config) -> Result<()> {
+    cfg.resolve_memory_max();
+    tracing::info!(memory_max = %cfg.db_memory_max, "per-database memory limit");
     let app = app::App::load(cfg, cgroup::Cgroups::init())?;
     app.storage.check().await?;
     app.ensure_template().await?;

@@ -23,6 +23,24 @@ pub struct Cgroups {
     root: Option<PathBuf>,
 }
 
+/// 90 % of a `memory.max` value, in bytes, for `memory.high`: the kernel
+/// starts reclaiming there instead of waiting for the hard limit and the
+/// OOM killer. `None` for "max" or anything it cannot read.
+fn soft_limit(max: &str) -> Option<String> {
+    let max = max.trim();
+    let split = max.find(|c: char| !c.is_ascii_digit()).unwrap_or(max.len());
+    let (digits, unit) = max.split_at(split);
+    let mult: u64 = match unit {
+        "" => 1,
+        "K" | "k" => 1 << 10,
+        "M" | "m" => 1 << 20,
+        "G" | "g" => 1 << 30,
+        _ => return None,
+    };
+    let bytes = digits.parse::<u64>().ok()?.checked_mul(mult)?;
+    Some((bytes / 10 * 9).to_string())
+}
+
 fn own_cgroup() -> Result<PathBuf> {
     let s = std::fs::read_to_string("/proc/self/cgroup")?;
     let rel = s
@@ -75,6 +93,9 @@ impl Cgroups {
         let res = (|| -> Result<()> {
             std::fs::create_dir_all(&dir)?;
             std::fs::write(dir.join("memory.max"), memory_max)?;
+            if let Some(high) = soft_limit(memory_max) {
+                std::fs::write(dir.join("memory.high"), high)?;
+            }
             std::fs::write(dir.join("cpu.max"), cpu_max)?;
             std::fs::write(dir.join("pids.max"), "512")?;
             Ok(())
@@ -128,4 +149,18 @@ pub fn enter(procs: &CString) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::soft_limit;
+
+    #[test]
+    fn soft_limit_is_ninety_percent() {
+        assert_eq!(soft_limit("512M").as_deref(), Some("483183819"));
+        assert_eq!(soft_limit("1G").as_deref(), Some("966367638"));
+        assert_eq!(soft_limit("1000").as_deref(), Some("900"));
+        assert_eq!(soft_limit("max"), None);
+        assert_eq!(soft_limit("12X"), None);
+    }
 }

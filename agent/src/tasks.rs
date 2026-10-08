@@ -71,26 +71,34 @@ async fn evictor(app: Arc<App>) {
     }
 }
 
-/// Fresh snapshots bound how much WAL a restore has to replay.
+/// Fresh snapshots bound how much WAL a restore has to replay. A database
+/// earns one by writing `snapshot_after_wal_mb` since its last, or by going
+/// `snapshot_every_hours` without one. A quiet database does neither for a
+/// week, and meanwhile costs no CPU, no upload and no storage.
 async fn snapshotter(app: Arc<App>) {
     let mut tick = tokio::time::interval(Duration::from_secs(600));
-    let every = chrono::Duration::hours(app.cfg.snapshot_every_hours.max(1) as i64);
+    let max_age = chrono::Duration::hours(app.cfg.snapshot_every_hours.max(1) as i64);
+    let wal_budget = app.cfg.snapshot_after_wal_mb << 20;
     loop {
         tick.tick().await;
-        let due: Vec<String> = app.meta(|m| {
+        let candidates = app.meta(|m| {
             m.databases
                 .values()
                 .filter(|d| d.status == Status::Ready && d.location == Location::Local && !d.fenced)
-                .filter(|d| d.last_snapshot_at.is_none_or(|t| Utc::now() - t > every))
-                .map(|d| d.id.clone())
-                .collect()
+                .cloned()
+                .collect::<Vec<_>>()
         });
-        for id in due {
+        for d in candidates {
             // Only awake databases change; sleeping ones keep their last snapshot.
-            if app.runtime(&id).is_running()
-                && let Err(e) = app.snapshot(&id).await
+            if !app.runtime(&d.id).is_running() {
+                continue;
+            }
+            let stale = d.last_snapshot_at.is_none_or(|t| Utc::now() - t > max_age);
+            let grown = !stale && app.wal_since_snapshot(&d).await.unwrap_or(0) >= wal_budget;
+            if (stale || grown)
+                && let Err(e) = app.snapshot(&d.id).await
             {
-                warn!(db = id, "scheduled snapshot failed: {e:#}");
+                warn!(db = d.id, "scheduled snapshot failed: {e:#}");
             }
         }
     }
@@ -132,6 +140,9 @@ struct DbBeat {
     location: Location,
     running: bool,
     connections: usize,
+    /// Status, location, running or connections differ from what the control
+    /// plane last accepted. It rewrites a row only when this is set.
+    changed: bool,
     /// Resource use, when the database is up and cgroups are available.
     #[serde(skip_serializing_if = "Option::is_none")]
     memory_bytes: Option<u64>,
@@ -239,23 +250,35 @@ async fn pg_counters(app: &App, id: &str) -> Result<PgCounters> {
     })
 }
 
-async fn heartbeat(app: &App, url: &str, id: &Identity) -> Result<()> {
+/// What the control plane knows about a database, as of the last beat it
+/// accepted. A database that still matches is left out of the next beat.
+type Known = std::collections::HashMap<String, (Status, Location, bool, usize)>;
+
+async fn heartbeat(app: &App, url: &str, id: &Identity, known: &mut Known) -> Result<()> {
     let mut databases: Vec<DbBeat> = app.meta(|m| {
         m.databases
             .values()
             .map(|d| {
                 let rt = app.runtime(&d.id);
+                let running = rt.is_running();
+                let connections = rt.connections();
+                let changed = known.get(&d.id) != Some(&(d.status, d.location, running, connections));
                 DbBeat {
                     id: d.id.clone(),
                     status: d.status,
                     location: d.location,
-                    running: rt.is_running(),
-                    connections: rt.connections(),
+                    running,
+                    connections,
+                    changed,
                     memory_bytes: app.cgroups.memory_current(&d.id),
                     cpu_usec: app.cgroups.cpu_usec(&d.id),
                     pg: None,
                 }
             })
+            // A sleeping database that has not moved has nothing to report;
+            // leaving it out is what keeps control-plane writes proportional
+            // to what is awake rather than to what exists.
+            .filter(|b| b.changed || b.running)
             .collect()
     });
 
@@ -267,6 +290,11 @@ async fn heartbeat(app: &App, url: &str, id: &Identity) -> Result<()> {
             beat.pg = Some(counters);
         }
     }
+    // What this beat claims, kept aside: the request takes the beats with it.
+    let sent: Vec<(String, (Status, Location, bool, usize))> = databases
+        .iter()
+        .map(|b| (b.id.clone(), (b.status, b.location, b.running, b.connections)))
+        .collect();
     let resp = http()
         .post(format!("{url}/v1/boxes/{}/heartbeat", id.box_id))
         .bearer_auth(&id.agent_token)
@@ -284,6 +312,10 @@ async fn heartbeat(app: &App, url: &str, id: &Identity) -> Result<()> {
         );
     }
     let r: HeartbeatResp = resp.json().await?;
+    // Accepted: remember what was sent, forget databases that no longer exist.
+    known.extend(sent);
+    let present: std::collections::HashSet<String> = app.meta(|m| m.databases.keys().cloned().collect());
+    known.retain(|k, _| present.contains(k));
     // Split-brain guard: never serve a database the control plane has moved.
     if let Some(assigned) = r.databases {
         let mine: Vec<_> = app.meta(|m| {
@@ -326,9 +358,11 @@ async fn control_loop(app: Arc<App>) {
         }
     };
     let mut tick = tokio::time::interval(Duration::from_secs(20));
+    // Empty after a restart, so the first beat carries everything.
+    let mut known = Known::new();
     loop {
         tick.tick().await;
-        if let Err(e) = heartbeat(&app, &url, &identity).await {
+        if let Err(e) = heartbeat(&app, &url, &identity, &mut known).await {
             warn!("heartbeat failed: {e:#}");
         }
     }

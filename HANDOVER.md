@@ -159,8 +159,8 @@ docs/             ARCHITECTURE.md
   but it replays the parent's whole archive after its newest snapshot.
 - Restores fetch WAL one segment per process spawn (`wal-fetch`). Slow for
   long replays; prefetching would help. Snapshots bound this.
-- No snapshot trigger by WAL volume, only by time (24 h). A very write-heavy
-  DB could build up a lot of replay.
+- Snapshots are triggered by WAL volume (256 MB since the last) with a weekly
+  ceiling; a write-heavy DB snapshots often, a quiet one weekly.
 - Certificate renewal restarts the agent: open proxied sessions drop, while
   Postgres keeps running (`KillMode=process`).
 - Cancel requests are broadcast to all running DBs on the box. Safe, but

@@ -21,7 +21,7 @@ pub struct BoxStats {
     pub connections: usize,
 }
 
-fn meminfo(key: &str) -> u64 {
+pub(crate) fn meminfo(key: &str) -> u64 {
     std::fs::read_to_string("/proc/meminfo")
         .ok()
         .and_then(|s| {

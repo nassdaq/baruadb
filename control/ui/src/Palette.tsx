@@ -93,7 +93,7 @@ export function Palette({
                       "text-dim data-focus:bg-raise data-focus:text-text",
                     )}
                   >
-                    <Mark className="size-3.5 shrink-0 text-neon" />
+                    <Mark className="size-3.5 shrink-0 text-accent" />
                     <span className="truncate">{t.label}</span>
                     <span className="ml-auto shrink-0 font-mono text-[11px] text-faint">{t.hint}</span>
                   </ComboboxOption>

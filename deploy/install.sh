@@ -59,7 +59,9 @@ apt-get install -yq postgresql-common curl ca-certificates git build-essential p
 # -y, not `yes |`: the script exits before draining the pipe, and SIGPIPE on
 # `yes` would trip pipefail and abort the install.
 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
-apt-get install -yq postgresql-16
+apt-get install -yq postgresql-16 pgbouncer
+# The agent runs a pooler per database; the distro service would just sit there.
+systemctl disable --now pgbouncer >/dev/null 2>&1 || true
 # The agent runs its own clusters; the distro default would sit on port 5432.
 systemctl disable --now postgresql >/dev/null 2>&1 || true
 pg_dropcluster --stop 16 main >/dev/null 2>&1 || true

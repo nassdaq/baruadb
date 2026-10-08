@@ -7,7 +7,7 @@ import { ago, Badge, Button, Card, cx, Dot, Empty, ErrorNote, Stat } from "./com
 import { DataGrid } from "./Grid";
 import { PageHead } from "./Shell";
 
-const C = { live: "#00e599", sky: "#60a5fa", amber: "#fbbf24", rose: "#f87171", violet: "#a78bfa" };
+const C = { live: "#26b2b3", sky: "#60a5fa", amber: "#fbbf24", rose: "#f87171", violet: "#a78bfa" };
 
 /** Counters are cumulative. A graph wants the rate, and a restarted Postgres
  *  resets its counters, so a drop is "no data" rather than a negative rate. */

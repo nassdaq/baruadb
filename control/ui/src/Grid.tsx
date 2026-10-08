@@ -64,7 +64,7 @@ export function FilterBar({
         <PopoverButton
           as={Button}
           size="sm"
-          className={cx(filters.length > 0 && "border-neon/40 text-neon")}
+          className={cx(filters.length > 0 && "border-accent/40 text-accent")}
         >
           <FunnelIcon className="size-3.5" />
           {filters.length > 0 ? `Filters · ${filters.length}` : "Filters"}
@@ -221,7 +221,7 @@ export function DataGrid({
             >
               <span className="text-text">{c}</span>
               {types?.[c] && <span className="ml-2 font-mono text-[11px] text-faint">{types[c]}</span>}
-              {sort?.col === c && <span className="ml-1 text-neon">{sort.dir === "asc" ? "↑" : "↓"}</span>}
+              {sort?.col === c && <span className="ml-1 text-accent">{sort.dir === "asc" ? "↑" : "↓"}</span>}
             </th>
           ))}
         </tr>
@@ -230,7 +230,7 @@ export function DataGrid({
         {result.rows.map((row, i) => {
           const picked = selectable && selection!.has(i);
           return (
-            <tr key={i} className={cx("group", picked && "bg-neon/5")}>
+            <tr key={i} className={cx("group", picked && "bg-accent/5")}>
               <td
                 className={cx(
                   "border-b border-r border-line-soft px-2 py-1.5 text-center text-[11px] text-faint",
@@ -361,7 +361,7 @@ function CellEditor({
           }
         }}
         onBlur={() => commit(value)}
-        className="w-full min-w-0 rounded border border-neon/60 bg-base px-1.5 py-1 font-mono text-[12px] text-text data-focus:outline-none"
+        className="w-full min-w-0 rounded border border-accent/60 bg-base px-1.5 py-1 font-mono text-[12px] text-text data-focus:outline-none"
       />
       {nullable && (
         <button
@@ -393,7 +393,7 @@ export function SelectionBar({
 }) {
   if (count === 0) return null;
   return (
-    <div className="flex items-center gap-3 border-b border-neon/20 bg-neon/5 px-3 py-2">
+    <div className="flex items-center gap-3 border-b border-accent/20 bg-accent/5 px-3 py-2">
       <span className="text-[13px] text-text">
         {count} {count === 1 ? "row" : "rows"} selected
       </span>
@@ -425,7 +425,7 @@ export function SortMenu({
 }) {
   return (
     <Popover className="relative">
-      <PopoverButton as={Button} size="sm" className={cx(sort && "border-neon/40 text-neon")}>
+      <PopoverButton as={Button} size="sm" className={cx(sort && "border-accent/40 text-accent")}>
         <ArrowsUpDownIcon className="size-3.5" />
         {sort ? `Sorted by ${sort.col}` : "Sort"}
       </PopoverButton>
@@ -452,7 +452,7 @@ export function SortMenu({
                       className={cx(
                         "rounded border px-1.5 py-0.5 text-[11px]",
                         sort?.col === c && sort.dir === dir
-                          ? "border-neon/40 bg-neon/10 text-neon"
+                          ? "border-accent/40 bg-accent/10 text-accent"
                           : "border-line text-dim hover:bg-raise hover:text-text",
                       )}
                     >

@@ -606,7 +606,7 @@ function TablesConsole({ db }: { db: Database }) {
           </div>
         </div>
         {notice && (
-          <div className="border-b border-neon/20 bg-neon/5 px-3 py-2 text-[12px] text-neon">{notice}</div>
+          <div className="border-b border-accent/20 bg-accent/5 px-3 py-2 text-[12px] text-accent">{notice}</div>
         )}
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {visible.length === 0 ? (
@@ -621,7 +621,7 @@ function TablesConsole({ db }: { db: Database }) {
                   table === t.name ? "bg-raise text-text" : "text-dim hover:bg-raise/60 hover:text-text",
                 )}
               >
-                <span className={cx("text-xs", table === t.name ? "text-neon" : "text-faint")}>▦</span>
+                <span className={cx("text-xs", table === t.name ? "text-accent" : "text-faint")}>▦</span>
                 <span className="min-w-0 flex-1 truncate">{t.name}</span>
                 <span className="shrink-0 text-[10px] text-faint">{t.size}</span>
               </button>
@@ -805,7 +805,7 @@ function Structure({ result }: { result: QueryResult }) {
           <tr key={c[0]} className="border-b border-line-soft last:border-0 hover:bg-raise/40">
             <td className="px-4 py-2.5">
               {c[0]}
-              {c[4] === "t" && <span className="ml-2 text-[11px] text-neon">pk</span>}
+              {c[4] === "t" && <span className="ml-2 text-[11px] text-accent">pk</span>}
             </td>
             <td className="px-4 py-2.5 font-mono text-xs text-dim">{c[1]}</td>
             <td className="px-4 py-2.5 text-dim">{c[2] === "t" ? "no" : "yes"}</td>

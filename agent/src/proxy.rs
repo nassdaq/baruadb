@@ -111,7 +111,8 @@ fn encode_startup(params: &BTreeMap<String, String>) -> Vec<u8> {
 }
 
 /// Work out the database id and strip routing hints from the params.
-fn route(app: &App, params: &mut BTreeMap<String, String>, sni: Option<&str>) -> Option<String> {
+/// Returns the database and whether the client asked for the pooled endpoint.
+fn route(app: &App, params: &mut BTreeMap<String, String>, sni: Option<&str>) -> Option<(String, bool)> {
     let exists = |id: &str| app.meta(|m| m.databases.contains_key(id));
 
     // Options are always cleaned so Postgres never sees `endpoint=`.
@@ -144,21 +145,22 @@ fn route(app: &App, params: &mut BTreeMap<String, String>, sni: Option<&str>) ->
     if let Some(host) = sni
         && let Some(label) = host.strip_suffix(&format!(".{}", app.cfg.domain))
     {
-        // `<id>-pooler` is reserved for the upcoming pooler; route it directly for now.
+        // `<id>-pooler` means the transaction pooler rather than Postgres itself.
+        let pooled = label.ends_with("-pooler");
         let id = label.strip_suffix("-pooler").unwrap_or(label);
         if exists(id) {
-            return Some(id.into());
+            return Some((id.into(), pooled));
         }
     }
-    if from_options.is_some() {
-        return from_options;
+    if let Some(id) = from_options {
+        return Some((id, false));
     }
     if let Some(user) = params.get("user").cloned()
         && let Some((role, id)) = user.rsplit_once("--")
         && exists(id)
     {
         params.insert("user".into(), role.into());
-        return Some(id.into());
+        return Some((id.into(), false));
     }
     None
 }
@@ -189,7 +191,7 @@ where
         bail!("unsupported protocol {code}");
     }
     let mut params = parse_params(&body)?;
-    let Some(id) = route(&app, &mut params, sni.as_deref()) else {
+    let Some((id, pooled)) = route(&app, &mut params, sni.as_deref()) else {
         let msg = format!(
             "barua: unknown database; connect to <database-id>.{} with sslmode=require",
             app.cfg.domain
@@ -224,7 +226,21 @@ where
         }
     };
 
-    let mut server = TcpStream::connect(("127.0.0.1", db.port)).await?;
+    // A client that asked for the pooler gets it, unless it is not running, in
+    // which case a direct connection is better than a refused one.
+    let mut server = match pooled {
+        true => {
+            let pool_port = crate::pooler::port(&app, &db);
+            match TcpStream::connect(("127.0.0.1", pool_port)).await {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!(db = id, "pooler unreachable on {pool_port}, connecting directly: {e}");
+                    TcpStream::connect(("127.0.0.1", db.port)).await?
+                }
+            }
+        }
+        false => TcpStream::connect(("127.0.0.1", db.port)).await?,
+    };
     server.set_nodelay(true)?;
     server.write_all(&encode_startup(&params)).await?;
     tokio::io::copy_bidirectional(&mut client, &mut server).await?;

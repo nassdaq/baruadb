@@ -169,7 +169,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
     <div className="grid h-full place-items-center px-5">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center gap-2 text-[17px] font-semibold tracking-tight">
-          <Mark className="size-5 text-neon" />
+          <Mark className="size-5 text-accent" />
           BARUA
         </div>
         <Card className="p-6">

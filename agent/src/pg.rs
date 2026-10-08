@@ -197,10 +197,19 @@ impl App {
         run(&mut cmd)
             .await
             .map_err(|e| anyhow!("{e:#}\n--- postgres.log ---\n{}", self.log_tail(id)))?;
+
+        // The pooler is a convenience, not a dependency: if it will not start,
+        // the database is still up and reachable directly.
+        if let Ok(db) = self.db(id)
+            && let Err(e) = crate::pooler::start(self, &db).await
+        {
+            warn!(db = id, "pooler did not start: {e:#}");
+        }
         Ok(())
     }
 
     async fn stop_pg(&self, id: &str, mode: &str) -> Result<()> {
+        crate::pooler::stop(self, id).await;
         run(Command::new(self.cfg.pg("pg_ctl"))
             .arg("-D")
             .arg(self.pgdata(id))

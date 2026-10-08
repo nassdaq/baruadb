@@ -59,9 +59,9 @@ export function Button({ children, variant = "default", size = "md", className, 
         "inline-flex items-center gap-1.5 rounded-md border font-medium transition active:scale-[0.98]",
         size === "sm" ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-[13px]",
         "data-disabled:cursor-default data-disabled:opacity-40",
-        "data-focus:outline-none data-focus:ring-2 data-focus:ring-neon/30 data-focus:ring-offset-0",
+        "data-focus:outline-none data-focus:ring-2 data-focus:ring-accent/30 data-focus:ring-offset-0",
         variant === "primary" && "border-transparent bg-text text-base data-hover:bg-white",
-        variant === "accent" && "border-neon/40 bg-neon/10 text-neon data-hover:bg-neon/15",
+        variant === "accent" && "border-accent/40 bg-accent/10 text-accent data-hover:bg-accent/15",
         variant === "danger" && "border-line text-text data-hover:border-rose/50 data-hover:text-rose",
         variant === "ghost" && "border-transparent text-dim data-hover:bg-raise data-hover:text-text",
         variant === "default" && "border-line bg-panel text-text data-hover:border-edge data-hover:bg-raise",
@@ -76,8 +76,8 @@ export function Button({ children, variant = "default", size = "md", className, 
 // ---------------------------------------------------------------- status
 
 const TONE: Record<string, string> = {
-  awake: "bg-neon shadow-[0_0_6px_--theme(--color-neon)]",
-  online: "bg-neon shadow-[0_0_6px_--theme(--color-neon)]",
+  awake: "bg-accent shadow-[0_0_6px_--theme(--color-accent)]",
+  online: "bg-accent shadow-[0_0_6px_--theme(--color-accent)]",
   asleep: "bg-faint",
   cold: "bg-sky",
   creating: "bg-amber",
@@ -94,7 +94,7 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
     <span
       className={cx(
         "rounded border px-1.5 py-px text-[11px] font-medium",
-        tone === "accent" ? "border-neon/30 bg-neon/10 text-neon" : "border-line bg-raise text-dim",
+        tone === "accent" ? "border-accent/30 bg-accent/10 text-accent" : "border-line bg-raise text-dim",
       )}
     >
       {children}
@@ -179,7 +179,7 @@ export function TextField({
         onChange={(e) => onChange(e.target.value)}
         className={cx(
           "w-full rounded-md border border-line bg-base px-3 py-2 text-[13px] text-text",
-          "placeholder:text-faint data-focus:border-edge data-focus:outline-none data-focus:ring-2 data-focus:ring-neon/20",
+          "placeholder:text-faint data-focus:border-edge data-focus:outline-none data-focus:ring-2 data-focus:ring-accent/20",
           mono && "font-mono",
         )}
       />
@@ -226,7 +226,7 @@ export function Select<T extends string>({
             className="flex cursor-pointer items-center justify-between gap-2 rounded px-2.5 py-1.5 text-dim data-focus:bg-raise data-focus:text-text"
           >
             <span className="truncate">{o}</span>
-            {o === value && <CheckIcon className="size-4 shrink-0 text-neon" />}
+            {o === value && <CheckIcon className="size-4 shrink-0 text-accent" />}
           </ListboxOption>
         ))}
       </ListboxOptions>
@@ -399,8 +399,8 @@ export function CheckBox({
       title={title}
       className={cx(
         "group flex size-4 shrink-0 cursor-pointer items-center justify-center rounded border transition",
-        "border-edge bg-base data-checked:border-neon data-checked:bg-neon",
-        "data-focus:outline-none data-focus:ring-1 data-focus:ring-neon/50",
+        "border-edge bg-base data-checked:border-accent data-checked:bg-accent",
+        "data-focus:outline-none data-focus:ring-1 data-focus:ring-accent/50",
       )}
     >
       <svg viewBox="0 0 12 12" className="size-3 stroke-base opacity-0 group-data-checked:opacity-100" fill="none">
@@ -436,11 +436,11 @@ export function Toggle({
         onChange={onChange}
         className={cx(
           "group mt-0.5 flex h-5 w-9 shrink-0 cursor-pointer rounded-full p-0.5 transition",
-          "border border-line bg-raise data-checked:border-neon/50 data-checked:bg-neon/25",
-          "data-focus:outline-none data-focus:ring-1 data-focus:ring-neon/50",
+          "border border-line bg-raise data-checked:border-accent/50 data-checked:bg-accent/25",
+          "data-focus:outline-none data-focus:ring-1 data-focus:ring-accent/50",
         )}
       >
-        <span className="size-4 rounded-full bg-dim transition group-data-checked:translate-x-4 group-data-checked:bg-neon" />
+        <span className="size-4 rounded-full bg-dim transition group-data-checked:translate-x-4 group-data-checked:bg-accent" />
       </Switch>
       <span>
         <Label className="block cursor-pointer text-[13px] text-text">{label}</Label>

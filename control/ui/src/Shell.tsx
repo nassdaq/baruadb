@@ -4,12 +4,8 @@ import type { ReactNode } from "react";
 import type { Me } from "./api";
 import { cx } from "./components";
 
-/** The brand mark: a small diamond, the way every console does it. */
-export const Mark = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 16 16" className={cx("size-4", className)} fill="none" aria-hidden="true">
-    <path d="M8 1.5 14.5 8 8 14.5 1.5 8 8 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-  </svg>
-);
+export { Mark } from "./Logo";
+import { Logo, Mark } from "./Logo";
 
 export type NavItem = {
   label: string;
@@ -36,9 +32,8 @@ export function Shell({
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-[52px] shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
-        <div className="flex w-[164px] items-center gap-2 text-[15px] font-semibold tracking-tight">
-          <Mark className="text-neon" />
-          BARUA
+        <div className="flex w-[164px] items-center">
+          <Logo size={19} />
         </div>
         <button
           onClick={onSearch}
@@ -50,7 +45,7 @@ export function Shell({
         </button>
         <Menu>
           <MenuButton className="ml-auto flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] data-hover:bg-raise">
-            <span className="grid size-6 place-items-center rounded bg-neon/15 text-[11px] font-semibold text-neon">
+            <span className="grid size-6 place-items-center rounded bg-accent/15 text-[11px] font-semibold text-accent">
               {me.email[0]?.toUpperCase()}
             </span>
             <span className="hidden text-dim sm:inline">{me.name || me.email.split("@")[0]}</span>
@@ -103,7 +98,7 @@ export function NavLink({ label, icon, active, onClick }: NavItem) {
         active ? "bg-raise text-text" : "text-dim hover:bg-raise/60 hover:text-text",
       )}
     >
-      <span className={cx("grid size-4 shrink-0 place-items-center", active ? "text-neon" : "text-faint")}>
+      <span className={cx("grid size-4 shrink-0 place-items-center", active ? "text-accent" : "text-faint")}>
         {icon ?? <Mark />}
       </span>
       <span className="truncate">{label}</span>

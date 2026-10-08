@@ -4,6 +4,7 @@ mod cgroup;
 mod config;
 mod lsn;
 mod pg;
+mod pooler;
 mod proxy;
 mod stats;
 mod storage;

@@ -80,6 +80,26 @@ pub struct Config {
     #[arg(long, env = "BARUA_DB_MAX_CONNECTIONS", default_value_t = 50)]
     pub db_max_connections: u32,
 
+    /// Transaction pooling behind `<id>-pooler.<domain>`.
+    #[arg(long, env = "BARUA_POOLER", default_value_t = true, action = clap::ArgAction::Set)]
+    pub pooler: bool,
+
+    /// Path to the pgbouncer binary.
+    #[arg(long, env = "BARUA_PGBOUNCER_BIN", default_value = "pgbouncer")]
+    pub pgbouncer_bin: String,
+
+    /// Backends each pooled database keeps open to Postgres.
+    #[arg(long, env = "BARUA_POOLER_POOL_SIZE", default_value_t = 10)]
+    pub pooler_pool_size: u32,
+
+    /// Clients a pooled database accepts at once.
+    #[arg(long, env = "BARUA_POOLER_MAX_CLIENTS", default_value_t = 200)]
+    pub pooler_max_clients: u32,
+
+    /// Pooler ports, in their own range so they cannot collide with Postgres.
+    #[arg(long, env = "BARUA_POOLER_PORT_BASE", default_value_t = 56000)]
+    pub pooler_port_base: u16,
+
     /// First local port handed to database Postgres instances.
     #[arg(long, env = "BARUA_PORT_BASE", default_value_t = 55000)]
     pub port_base: u16,

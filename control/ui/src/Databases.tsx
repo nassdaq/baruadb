@@ -115,7 +115,7 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
                 <tr key={d.id} className="group border-b border-line-soft last:border-0 hover:bg-raise/50">
                   <td className="px-4 py-2.5">
                     <button onClick={() => onOpen(d.id)} className="flex items-center gap-2 text-left">
-                      <Mark className="size-3.5 shrink-0 text-neon" />
+                      <Mark className="size-3.5 shrink-0 text-accent" />
                       <span className="font-medium group-hover:underline">{d.name}</span>
                       {d.parent_id ? <Badge>Branch</Badge> : <Badge tone="accent">Primary</Badge>}
                     </button>

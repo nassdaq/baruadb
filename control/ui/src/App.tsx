@@ -169,13 +169,16 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // The signed-in person, held back until the mark has finished drawing its
+  // check: the moment is short, and skipping it made the logo feel broken.
+  const [done, setDone] = useState<Me | null>(null);
 
   const submit = async () => {
     setBusy(true);
     setError("");
     try {
       const r = mode === "in" ? await api.signIn(email, password) : await api.signUp(email, password, name);
-      onSignedIn(r.user);
+      setDone(r.user);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
@@ -183,11 +186,28 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
     }
   };
 
+  // The element says when it is finished; if it never does (reduced motion,
+  // an old browser), go anyway after the animation's worst-case length.
+  const enter = useCallback(() => {
+    if (done) onSignedIn(done);
+  }, [done, onSignedIn]);
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(enter, 2500);
+    return () => clearTimeout(t);
+  }, [done, enter]);
+
   return (
     <div className="grid h-full place-items-center px-5">
       <div className="w-full max-w-sm">
         <div className="mb-7 flex flex-col items-center text-center">
-          <Spinner size={56} state={busy ? "loading" : error ? "error" : "idle"} intro className="mb-4" />
+          <Spinner
+            size={56}
+            state={done ? "success" : busy ? "loading" : error ? "error" : "idle"}
+            intro
+            className="mb-4"
+            onSuccess={enter}
+          />
           <div className="text-[20px] tracking-tight">
             <span className="font-semibold">Barua</span> <span className="text-dim">Database</span>
           </div>
@@ -213,9 +233,9 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
               type="password"
               placeholder={mode === "up" ? "at least 10 characters" : ""}
             />
-            <Button type="submit" variant="accent" disabled={busy} className="mt-1 w-full justify-center">
+            <Button type="submit" variant="accent" disabled={busy || done !== null} className="mt-1 w-full justify-center">
               {busy && <Spinner size={16} noSheen />}
-              {busy ? "Working" : mode === "in" ? "Sign in" : "Create account"}
+              {done ? "Welcome" : busy ? "Working" : mode === "in" ? "Sign in" : "Create account"}
             </Button>
           </form>
           <button

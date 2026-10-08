@@ -14,6 +14,7 @@ export function Spinner({
   noSheen,
   label,
   className,
+  onSuccess,
 }: {
   state?: State;
   size?: number;
@@ -22,6 +23,9 @@ export function Spinner({
   noSheen?: boolean;
   label?: string;
   className?: string;
+  /** Fired once the success animation has fully played (after the intro, if
+   *  that is still running), so a screen can wait for the mark to finish. */
+  onSuccess?: () => void;
 }) {
   const ref = useRef<HTMLElement>(null);
 
@@ -29,6 +33,13 @@ export function Spinner({
     const el = ref.current;
     if (el && el.getAttribute("state") !== state) el.setAttribute("state", state);
   }, [state]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !onSuccess) return;
+    el.addEventListener("vs-success", onSuccess);
+    return () => el.removeEventListener("vs-success", onSuccess);
+  }, [onSuccess]);
 
   const props: Record<string, unknown> = {
     ref,

@@ -110,6 +110,10 @@ export const api = {
   resetPassword: (id: string) => post<{ password: string; connection_uri: string }>(`/databases/${id}/reset-password`),
   restorePoints: (id: string) =>
     call<{ earliest: string | null; snapshots: { taken_at: string; kind: string }[] }>(`/databases/${id}/restore-points`),
+  /** The connection string with its password, for the owner of the database. */
+  connection: (id: string) =>
+    call<{ password: string; connection_uri: string; pooled_uri: string }>(`/databases/${id}/connection`),
+
   query: (id: string, sql: string, limit?: number) => post<QueryResult>(`/databases/${id}/query`, { sql, limit }),
 
   metrics: (id: string, hours: number) =>

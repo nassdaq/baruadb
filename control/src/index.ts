@@ -2,6 +2,7 @@
 // Postgres work happens on the boxes, which this Worker drives over HTTPS.
 
 import { agent, Box, deleteDns, Env, upsertDns } from "./infra";
+import { openPassword, sealPassword } from "./secrets";
 import {
   createSession,
   destroySession,
@@ -42,6 +43,7 @@ interface DbRow {
   running: number;
   connections: number;
   dns_record_id: string | null;
+  password_enc: string | null;
   created_at: string;
 }
 
@@ -160,10 +162,10 @@ function dbView(env: Env, db: DbRow, c: Caller) {
 
 async function insertDb(env: Env, db: DbRow): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO databases (id, name, owner, user_id, box_id, parent_id, role, dbname, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'creating', ?)`,
+    `INSERT INTO databases (id, name, owner, user_id, box_id, parent_id, role, dbname, status, password_enc, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'creating', ?, ?)`,
   )
-    .bind(db.id, db.name, db.owner, db.user_id, db.box_id, db.parent_id, db.role, db.dbname, db.created_at)
+    .bind(db.id, db.name, db.owner, db.user_id, db.box_id, db.parent_id, db.role, db.dbname, db.password_enc, db.created_at)
     .run();
 }
 
@@ -193,9 +195,11 @@ async function createDatabase(req: Request, env: Env, c: Caller): Promise<Respon
     running: 0,
     connections: 0,
     dns_record_id: null,
+    password_enc: null,
     created_at: now(),
   };
   const password = newPassword();
+  db.password_enc = await sealPassword(env.PASSWORD_KEY, password);
   await insertDb(env, db);
   try {
     await setDns(env, db, box);
@@ -284,6 +288,9 @@ async function resetPassword(env: Env, c: Caller, id: string): Promise<Response>
   const db = await loadDb(env, c, id);
   const password = newPassword();
   await agent(await loadBox(env, db.box_id), "POST", `/v1/databases/${db.id}/password`, { password });
+  await env.DB.prepare("UPDATE databases SET password_enc = ? WHERE id = ?")
+    .bind(await sealPassword(env.PASSWORD_KEY, password), db.id)
+    .run();
   return json({ password, connection_uri: connectionUri(env, db, password) });
 }
 
@@ -630,6 +637,22 @@ async function route(req: Request, env: Env): Promise<Response> {
     }
     // SQL on behalf of the owner. The agent runs it as the database's own
     // role, so this grants nothing the owner does not already have.
+    if (id && action === "dump" && m === "GET") {
+      const db = await loadDb(env, c, id);
+      const box = await loadBox(env, db.box_id);
+      const res = await fetch(`${box.api_url}/v1/databases/${db.id}/dump`, {
+        headers: { authorization: `Bearer ${box.agent_token}` },
+      });
+      if (!res.ok) throw new HttpError(502, `box ${box.id}: ${await res.text()}`);
+      // Streamed straight through; nothing is buffered in the Worker.
+      return new Response(res.body, {
+        headers: {
+          "content-type": "application/sql",
+          "content-disposition": `attachment; filename="${db.name}-${new Date().toISOString().slice(0, 10)}.sql"`,
+        },
+      });
+    }
+
     if (id && action === "query" && m === "POST") {
       const db = await loadDb(env, c, id);
       const b = await body<{ sql?: string; limit?: number }>(req);
@@ -641,6 +664,24 @@ async function route(req: Request, env: Env): Promise<Response> {
           limit: b.limit,
         }),
       );
+    }
+
+    // The full connection string, password included. Same authority as the
+    // database itself: only its owner, never another user.
+    if (id && action === "connection" && m === "GET") {
+      const db = await loadDb(env, c, id);
+      const password = await openPassword(env.PASSWORD_KEY, db.password_enc);
+      if (!password) {
+        throw new HttpError(
+          409,
+          "this password predates stored credentials, or the key changed; reset the password to get a new one",
+        );
+      }
+      return json({
+        password,
+        connection_uri: connectionUri(env, db, password),
+        pooled_uri: connectionUri(env, db, password, true),
+      });
     }
 
     if (id && action === "metrics" && m === "GET") {

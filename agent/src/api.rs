@@ -100,6 +100,7 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/databases/{id}/snapshots", get(snapshots))
         .route("/v1/databases/{id}/sync", post(sync))
         .route("/v1/databases/{id}/query", post(query))
+        .route("/v1/databases/{id}/dump", get(dump))
         .route("/v1/databases/{id}/release", post(release))
         .route("/v1/databases/{id}/password", post(password))
         .layer(middleware::from_fn_with_state(app.clone(), auth))
@@ -250,6 +251,47 @@ async fn snapshots(
     Path(id): Path<String>,
 ) -> ApiResult<Vec<crate::storage::SnapshotInfo>> {
     Ok(Json(app.storage.list_snapshots(&id).await?))
+}
+
+/// Stream a logical backup straight from pg_dump to the caller. Nothing is
+/// written to the box's disk: a database may be most of the free space, and a
+/// customer asking for a copy should not be able to fill the box to get it.
+async fn dump(State(app): State<AppState>, Path(id): Path<String>) -> Result<Response, ApiError> {
+    use tokio::process::Command;
+
+    let db = app.ensure_ready(&id).await.map_err(|e| ApiError(StatusCode::CONFLICT, format!("{e:#}")))?;
+    let _guard = crate::app::ConnectionGuard::new(app.runtime(&id));
+
+    let mut child = Command::new(app.cfg.pg("pg_dump"))
+        .args(["-h", &app.db_dir(&id).to_string_lossy()])
+        .args(["-p", &db.port.to_string()])
+        .args(["-U", crate::pg::ADMIN_ROLE])
+        .args(["--no-owner", "--no-privileges", "--format", "plain"])
+        .arg(&db.database)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("pg_dump: {e}")))?;
+
+    let stdout = child.stdout.take().expect("piped");
+    // Hold the child until the stream ends, so it is reaped rather than orphaned.
+    tokio::spawn(async move {
+        let _ = child.wait().await;
+    });
+
+    let stream = tokio_util::io::ReaderStream::new(stdout);
+    let body = axum::body::Body::from_stream(stream);
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "application/sql".to_string()),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{id}.sql\""),
+            ),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]

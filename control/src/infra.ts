@@ -5,6 +5,8 @@ import { HttpError } from "./util";
 export interface Env {
   /** "open" (default) or "closed" — whether strangers may create accounts. */
   SIGNUP?: string;
+  /** Encrypts stored database passwords. Without it, none are kept. */
+  PASSWORD_KEY?: string;
   DB: D1Database;
   DB_DOMAIN: string;
   AGENT_URL_TEMPLATE: string;

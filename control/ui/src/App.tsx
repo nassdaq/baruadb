@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Database, type Me } from "./api";
 import { Admin } from "./Admin";
-import { Button, Card, CopyField, ErrorNote, Modal, TextField } from "./components";
+import { Button, Card, ConnectPanel, ErrorNote, Modal, TextField } from "./components";
 import { DatabaseSidebar, DatabaseView, type Section } from "./Database";
 import { Databases } from "./Databases";
 import { CircleStackIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
@@ -95,28 +95,7 @@ export default function App() {
           <DatabaseView db={db} section={section} reload={loadDb} onBack={() => go("/")} />
         </Shell>
         <Modal open={connectOpen} onClose={() => setConnectOpen(false)} title={`Connect to ${db.name}`}>
-          <div className="mb-2 text-[12px] text-dim">Direct connection</div>
-          <CopyField value={db.connection_uri} />
-          <p className="mt-1.5 text-xs text-faint">One Postgres backend per client. Full session support.</p>
-
-          <div className="mb-2 mt-4 flex items-center gap-2 text-[12px] text-dim">
-            Pooled connection
-            <span className="rounded border border-accent/30 bg-accent/10 px-1.5 py-px text-[10px] text-accent">
-              recommended for serverless
-            </span>
-          </div>
-          <CopyField value={db.pooled_uri} />
-          <p className="mt-1.5 text-xs text-faint">
-            Many clients share a few backends, so hundreds of connections cost little. Transaction pooling, so session
-            state — <code className="font-mono">SET</code>, <code className="font-mono">LISTEN</code>, named prepared
-            statements — does not survive a transaction.
-          </p>
-
-          <div className="mb-2 mt-4 text-[12px] text-dim">psql</div>
-          <CopyField value={`psql "${db.connection_uri}"`} />
-          <p className="mt-4 text-xs text-faint">
-            Substitute the password you were shown at creation. Lost it? Reset the password from the databases list.
-          </p>
+          <ConnectPanel db={db} />
         </Modal>
         <Palette
           open={paletteOpen}

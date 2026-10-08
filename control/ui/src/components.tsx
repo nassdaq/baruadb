@@ -28,12 +28,17 @@ import {
   TransitionChild,
 } from "@headlessui/react";
 import type React from "react";
+import { useEffect, useState } from "react";
+import { api } from "./api";
 import {
+  ArrowDownTrayIcon,
   CheckIcon,
   ChevronDownIcon,
   ClipboardDocumentIcon,
   EllipsisVerticalIcon,
   ExclamationTriangleIcon,
+  EyeIcon,
+  EyeSlashIcon,
   MagnifyingGlassIcon,
 } from "@heroicons/react/20/solid";
 import { Fragment, type ReactNode } from "react";
@@ -534,5 +539,96 @@ export function Group({ legend, children }: { legend: string; children: ReactNod
       <Legend className="mb-2 text-[11px] uppercase tracking-wide text-faint">{legend}</Legend>
       {children}
     </Fieldset>
+  );
+}
+
+// ---------------------------------------------------------------- connect
+
+/** The connection details, the way a managed Postgres shows them: the real
+ *  string, hidden until asked for, copyable in one click. */
+export function ConnectPanel({ db }: { db: { id: string; name: string; connection_uri: string; pooled_uri: string } }) {
+  const [creds, setCreds] = useState<{ connection_uri: string; pooled_uri: string } | null>(null);
+  const [error, setError] = useState("");
+  const [shown, setShown] = useState(false);
+  const [pooled, setPooled] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // Fetched once, only when the panel opens: the password should not travel
+  // with every listing of every database.
+  useEffect(() => {
+    setBusy(true);
+    api
+      .connection(db.id)
+      .then(setCreds)
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(false));
+  }, [db.id]);
+
+  const real = pooled ? creds?.pooled_uri : creds?.connection_uri;
+  const masked = pooled ? db.pooled_uri : db.connection_uri;
+  const value = shown && real ? real : masked.replace("@", ":••••••••••••@");
+
+  return (
+    <div>
+      <Choice
+        label="endpoint"
+        value={pooled ? "pooled" : "direct"}
+        onChange={(v) => setPooled(v === "pooled")}
+        className="mb-3"
+        options={[
+          ["direct", "Direct"],
+          ["pooled", "Pooled"],
+        ] as const}
+      />
+
+      {error ? (
+        <ErrorNote>{error}</ErrorNote>
+      ) : (
+        <>
+          <div className="flex items-stretch overflow-hidden rounded-md border border-line bg-base">
+            <code className="flex-1 overflow-x-auto whitespace-nowrap px-3 py-2.5 font-mono text-xs text-dim">
+              {busy ? "…" : value}
+            </code>
+            <button
+              onClick={() => setShown((v) => !v)}
+              disabled={!real}
+              className="border-l border-line px-3 text-dim transition hover:bg-raise hover:text-text disabled:opacity-40"
+              title={shown ? "Hide password" : "Show password"}
+            >
+              {shown ? <EyeSlashIcon className="size-4" /> : <EyeIcon className="size-4" />}
+            </button>
+            <button
+              onClick={() => real && navigator.clipboard.writeText(real)}
+              disabled={!real}
+              className="border-l border-line px-3 text-dim transition hover:bg-raise hover:text-text disabled:opacity-40"
+              title="Copy with password"
+            >
+              <ClipboardDocumentIcon className="size-4" />
+            </button>
+          </div>
+          <p className="mt-1.5 text-xs text-faint">
+            {pooled
+              ? "Many clients share a few backends. Transaction pooling, so session state does not cross a transaction."
+              : "One backend per client, with full session support."}
+          </p>
+
+          <div className="mb-2 mt-4 text-[12px] text-dim">psql</div>
+          <CopyField value={`psql "${real ?? masked}"`} />
+
+          <div className="mb-2 mt-4 text-[12px] text-dim">Environment variable</div>
+          <CopyField value={`DATABASE_URL=${real ?? masked}`} />
+        </>
+      )}
+
+      <div className="mt-5 border-t border-line-soft pt-4">
+        <div className="mb-2 text-[13px] font-medium">Download</div>
+        <p className="mb-3 text-xs text-faint">
+          A plain SQL dump of schema and data, streamed from the box as it is produced. Restore it anywhere with psql.
+        </p>
+        <Button onClick={() => (window.location.href = `/v1/databases/${db.id}/dump`)}>
+          <ArrowDownTrayIcon className="size-4" /> Download .sql
+        </Button>
+      </div>
+    </div>
   );
 }

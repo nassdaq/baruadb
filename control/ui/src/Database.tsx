@@ -1,7 +1,7 @@
-import { Disclosure, DisclosureButton, DisclosurePanel, Input, Textarea } from "@headlessui/react";
+import { Input, Textarea } from "@headlessui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError, CATALOG, ident, literal, type Database, type QueryResult } from "./api";
-import { ArrowPathIcon, ChevronRightIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, PlusIcon } from "@heroicons/react/20/solid";
 import {
   ArrowUturnLeftIcon,
   ChartBarIcon,
@@ -20,7 +20,7 @@ import {
   Badge,
   Button,
   Card,
-  CopyField,
+  ConnectPanel,
   cx,
   Dot,
   ErrorNote,
@@ -187,36 +187,7 @@ function Overview({ db }: { db: Database }) {
       </Card>
 
       <Card className="mb-4 p-5">
-        <div className="mb-2 text-[13px] font-medium">Connection string</div>
-        <CopyField value={db.connection_uri} />
-        <div className="mb-2 mt-4 text-[13px] font-medium">Pooled</div>
-        <CopyField value={db.pooled_uri} />
-        <p className="mt-1.5 text-xs text-faint">
-          Many clients, few backends. Transaction pooling, so session state does not cross a transaction boundary.
-        </p>
-        <p className="mt-2.5 text-xs text-faint">
-          The password appears once, when the database is created or its password reset.
-        </p>
-        <Disclosure as="div" className="mt-4 border-t border-line-soft pt-4">
-          <DisclosureButton className="group flex w-full items-center gap-2 text-left text-[13px] font-medium">
-            <ChevronRightIcon className="size-4 text-faint transition group-data-open:rotate-90" />
-            Other ways to connect
-          </DisclosureButton>
-          <DisclosurePanel className="mt-3 space-y-3">
-            <div>
-              <div className="mb-1.5 text-[12px] text-dim">psql</div>
-              <CopyField value={`psql "${db.connection_uri}"`} />
-            </div>
-            <div>
-              <div className="mb-1.5 text-[12px] text-dim">Node</div>
-              <CopyField value={`new pg.Pool({ connectionString: "${db.connection_uri}" })`} />
-            </div>
-            <div>
-              <div className="mb-1.5 text-[12px] text-dim">Environment variable</div>
-              <CopyField value={`DATABASE_URL=${db.connection_uri}`} />
-            </div>
-          </DisclosurePanel>
-        </Disclosure>
+        <ConnectPanel db={db} />
       </Card>
     </>
   );

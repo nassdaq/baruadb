@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, ApiError, type Database, type Me } from "./api";
+import { api, ApiError, BRANCHES_PER_DB, type Database, type Me } from "./api";
 import {
   ago,
   Badge,
@@ -52,13 +52,20 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
     }
   };
 
-  const filtered = useMemo(
-    () => (list ?? []).filter((d) => (d.name + d.id).toLowerCase().includes(search.toLowerCase())),
-    [list, search],
-  );
+  // A branch lives under its database: the list is primaries, each followed
+  // by its branches, and a search that matches a branch keeps its parent.
+  const branchesOf = (id: string) => (list ?? []).filter((d) => d.parent_id === id);
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    const hit = (d: Database) => (d.name + d.id).toLowerCase().includes(q);
+    return (list ?? []).filter((d) => !d.parent_id && (hit(d) || branchesOf(d.id).some(hit)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, search]);
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const shown = filtered.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
-  const branchesOf = (id: string) => (list ?? []).filter((d) => d.parent_id === id).length;
+  const shown = filtered
+    .slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE)
+    .flatMap((d) => [d, ...branchesOf(d.id)]);
+  const primaries = (list ?? []).filter((d) => !d.parent_id).length;
 
   const awake = (list ?? []).filter((d) => d.state === "awake").length;
   const cold = (list ?? []).filter((d) => d.state === "cold").length;
@@ -79,11 +86,11 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
 
       <Card className="mb-7 p-5">
         <div className="flex flex-wrap gap-8">
-          <Stat label="Databases" value={list?.length ?? "—"} hint="Every database you own, branches included" />
+          <Stat label="Databases" value={list ? primaries : "—"} hint="Branches sit under their database and are not counted here" />
           <Stat label="Awake" value={awake} hint="Running right now on a box" />
           <Stat label="Cold" value={cold} hint="Archived, and restored on the next connection" />
           <Stat label="Connections" value={connections} hint="Open client connections" />
-          <Stat label="Quota" value={`${list?.length ?? 0} / ${me.db_quota}`} />
+          <Stat label="Quota" value={`${list ? primaries : 0} / ${me.db_quota}`} hint={`Plus up to ${BRANCHES_PER_DB} branches on each`} />
         </div>
         <p className="mt-4 border-t border-line-soft pt-3 text-xs text-faint">
           A database sleeps after five idle minutes and wakes on the next connection. Sleeping costs nothing but storage.
@@ -96,6 +103,12 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
       <SearchBox value={search} onChange={(v) => (setSearch(v), setPage(0))} className="mb-3" />
 
       {error && <ErrorNote>{error}</ErrorNote>}
+      {me.linked_to && me.db_quota === 0 && (
+        <ErrorNote>
+          This device already has a Barua account, so this one starts without a free allowance. Sign in with the
+          other account, or write to us and we will raise the limit here.
+        </ErrorNote>
+      )}
 
       <Card className="overflow-hidden">
         <table className="w-full">
@@ -137,11 +150,15 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
               </tr>
             ) : (
               shown.map((d) => (
-                <tr key={d.id} className="group border-b border-line-soft last:border-0 hover:bg-raise/50">
-                  <td className="px-4 py-2.5">
+                <tr key={d.id} className={cx("group border-b border-line-soft last:border-0 hover:bg-raise/50", d.parent_id && "bg-base/40")}>
+                  <td className={cx("py-2.5", d.parent_id ? "pl-10 pr-4" : "px-4")}>
                     <button onClick={() => onOpen(d.id)} className="flex items-center gap-2 text-left">
-                      <Mark className="size-3.5 shrink-0 text-accent" />
-                      <span className="font-medium group-hover:underline">{d.name}</span>
+                      {d.parent_id ? (
+                        <span className="text-faint" aria-hidden="true">↳</span>
+                      ) : (
+                        <Mark className="size-3.5 shrink-0 text-accent" />
+                      )}
+                      <span className={cx("group-hover:underline", d.parent_id ? "text-dim" : "font-medium")}>{d.name}</span>
                       {d.parent_id ? <Badge>Branch</Badge> : <Badge tone="accent">Primary</Badge>}
                     </button>
                   </td>
@@ -154,13 +171,17 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-dim">{d.connections}</td>
-                  <td className="px-4 py-2.5 text-dim">{branchesOf(d.id)}</td>
+                  <td className="px-4 py-2.5 text-dim">
+                    {d.parent_id ? "" : <>{branchesOf(d.id).length} <span className="text-faint">/ {BRANCHES_PER_DB}</span></>}
+                  </td>
                   <td className="px-2 py-2.5">
                     <RowMenu
                       items={[
                         { label: "Open", onClick: () => onOpen(d.id) },
                         { label: "Copy connection string", onClick: () => navigator.clipboard.writeText(d.connection_uri) },
-                        { label: "Create branch", onClick: () => setBranching(d) },
+                        ...(!d.parent_id && branchesOf(d.id).length < BRANCHES_PER_DB
+                          ? [{ label: "Create branch", onClick: () => setBranching(d) }]
+                          : []),
                         {
                           label: "Reset password",
                           onClick: () =>

@@ -11,6 +11,7 @@ import { BootScreen, Spinner } from "./Spinner";
 import { Palette, usePaletteShortcut } from "./Palette";
 import { PHONE, useMediaQuery } from "./media";
 import { TooSmall } from "./TooSmall";
+import { deviceSignature } from "./device";
 
 /** Routing: the path is the state. /databases/<id>/<section>, /account or /admin. */
 function usePath(): [string, (to: string) => void] {
@@ -183,7 +184,10 @@ function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
     setBusy(true);
     setError("");
     try {
-      const r = mode === "in" ? await api.signIn(email, password) : await api.signUp(email, password, name);
+      const r =
+        mode === "in"
+          ? await api.signIn(email, password)
+          : await api.signUp(email, password, name, await deviceSignature());
       setDone(r.user);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));

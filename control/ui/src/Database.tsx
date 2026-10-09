@@ -1,6 +1,6 @@
 import { Input, Textarea } from "@headlessui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiError, CATALOG, ident, literal, type Database, type QueryResult } from "./api";
+import { api, ApiError, BRANCHES_PER_DB, CATALOG, ident, literal, type Database, type QueryResult } from "./api";
 import { ArrowPathIcon, PlusIcon } from "@heroicons/react/20/solid";
 import {
   ArrowUturnLeftIcon,
@@ -214,11 +214,20 @@ function Branches({ db, reload, onOpen }: { db: Database; reload: () => void; on
     <>
       <PageHead
         title="Branches"
-        subtitle="A branch is a full copy taken at a moment in time, with its own storage and its own connection string."
+        subtitle={
+          db.parent_id
+            ? "This is a branch. New branches come from the primary database, not from here."
+            : children.length >= BRANCHES_PER_DB
+              ? `Both branches are in use. Delete one to make another.`
+              : `A branch is a full copy taken at a moment in time, with its own storage and connection string. Up to ${BRANCHES_PER_DB} per database.`
+        }
         actions={
-          <Button variant="accent" onClick={() => setBranching(true)}>
-            Create branch
-          </Button>
+          !db.parent_id &&
+          children.length < BRANCHES_PER_DB && (
+            <Button variant="accent" onClick={() => setBranching(true)}>
+              Create branch
+            </Button>
+          )
         }
       />
       {error && <ErrorNote>{error}</ErrorNote>}
@@ -401,7 +410,8 @@ function Backups({ db }: { db: Database }) {
               <tr>
                 <td colSpan={2} className="p-0">
                   <EmptyState icon={ArchiveBoxIcon} title="No snapshots yet">
-                    A snapshot is taken shortly after a database is created, then every day it is used.
+                    A copy is saved shortly after a database is created, then whenever it has written enough since the
+                    last one, and at least once a week while it is in use.
                   </EmptyState>
                 </td>
               </tr>

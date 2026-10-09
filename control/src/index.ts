@@ -221,8 +221,19 @@ async function createDatabase(req: Request, env: Env, c: Caller): Promise<Respon
   );
 }
 
+/** Branches hang off a primary database, two at most. A branch of a branch
+ *  would be a tree nobody can keep in their head, and each one is a whole
+ *  cluster on a box. */
+const BRANCHES_PER_DB = 2;
+
 async function createBranch(req: Request, env: Env, c: Caller, parentId: string): Promise<Response> {
   const parent = await loadDb(env, c, parentId);
+  if (parent.parent_id) throw new HttpError(400, "branches come from a primary database, not from another branch");
+  const have = await env.DB.prepare("SELECT count(*) AS n FROM databases WHERE parent_id = ?")
+    .bind(parent.id).first<{ n: number }>();
+  if ((have?.n ?? 0) >= BRANCHES_PER_DB) {
+    throw new HttpError(403, `a database can have ${BRANCHES_PER_DB} branches; delete one to make another`);
+  }
   if (parent.status !== "ready") await refresh(env, parent);
   if (parent.status !== "ready") throw new HttpError(409, `parent database is ${parent.status}`);
   const b = await body<{ name?: string; point_in_time?: string }>(req);
@@ -452,15 +463,35 @@ function boxView(b: Box) {
 
 // ---------------------------------------------------------------- accounts
 
-/** A person may hold db_quota databases, branches included: a branch is a
- *  whole Postgres cluster on a box, not a cheap pointer. */
+/** A person may hold db_quota primary databases; branches sit under their
+ *  database and are capped separately (BRANCHES_PER_DB). */
 async function checkQuota(env: Env, c: Caller): Promise<void> {
   if (c.kind !== "user") return;
-  const row = await env.DB.prepare("SELECT count(*) AS n FROM databases WHERE owner = ?")
+  if (c.user.db_quota === 0 && c.user.linked_to) {
+    throw new HttpError(403, "this device already has a Barua account; sign in with it, or ask us to raise the limit");
+  }
+  const row = await env.DB.prepare("SELECT count(*) AS n FROM databases WHERE owner = ? AND parent_id IS NULL")
     .bind(c.id).first<{ n: number }>();
   if ((row?.n ?? 0) >= c.user.db_quota) {
     throw new HttpError(403, `database limit reached (${c.user.db_quota}); delete one or ask for more`);
   }
+}
+
+// ---------------------------------------------------------------- devices
+
+const DEVICE_COOKIE = "barua_device";
+const DEVICE_DAYS = 400;
+
+function deviceCookie(id: string): string {
+  return `${DEVICE_COOKIE}=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${DEVICE_DAYS * 86_400}`;
+}
+
+/** The device cookie from the request, or a fresh one. Set on every sign-up
+ *  and sign-in so that a browser that has touched any account carries it. */
+function deviceOf(req: Request): { id: string; fresh: boolean } {
+  const have = readCookie(req, DEVICE_COOKIE);
+  if (have && /^[A-Za-z0-9_-]{16,64}$/.test(have)) return { id: have, fresh: false };
+  return { id: newId("dev_"), fresh: true };
 }
 
 const userView = (u: User) => ({
@@ -471,13 +502,14 @@ const userView = (u: User) => ({
   db_quota: u.db_quota,
   created_at: u.created_at,
   last_seen_at: u.last_seen_at,
+  linked_to: Boolean(u.linked_to),
 });
 
 /** A person's own page: who they are and how much of their allowance is used. */
 async function account(env: Env, c: Caller): Promise<Response> {
   if (c.kind !== "user") throw new HttpError(401, "sign in to see your account");
   const use = await env.DB.prepare(
-    `SELECT count(*) AS databases,
+    `SELECT sum(CASE WHEN parent_id IS NULL THEN 1 ELSE 0 END) AS databases,
             sum(CASE WHEN parent_id IS NOT NULL THEN 1 ELSE 0 END) AS branches,
             sum(CASE WHEN running = 1 THEN 1 ELSE 0 END) AS awake,
             sum(CASE WHEN location = 'cold' THEN 1 ELSE 0 END) AS archived
@@ -510,23 +542,45 @@ async function updateAccount(req: Request, env: Env, c: Caller): Promise<Respons
 async function adminUsers(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT u.id, u.email, u.name, u.is_admin, u.db_quota, u.created_at, u.last_seen_at,
-            count(d.id)                                              AS databases,
+            u.signup_country, l.email AS linked_email,
+            coalesce(sum(CASE WHEN d.parent_id IS NULL THEN 1 ELSE 0 END), 0) AS databases,
             coalesce(sum(CASE WHEN d.parent_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS branches,
             coalesce(sum(d.running), 0)                              AS awake,
             coalesce(sum(d.connections), 0)                          AS connections
        FROM users u
+       LEFT JOIN users l ON l.id = u.linked_to
        LEFT JOIN databases d ON d.owner = u.id
       GROUP BY u.id
       ORDER BY u.created_at DESC`).all<Record<string, unknown>>();
   return json(results.map((r) => ({ ...r, is_admin: r.is_admin === 1 })));
 }
 
+/** An admin can hand an allowance to an account the device check held back. */
+async function adminSetQuota(req: Request, env: Env, id: string): Promise<Response> {
+  const b = await body<{ db_quota?: number }>(req);
+  const q = Math.max(0, Math.min(20, Math.floor(Number(b.db_quota))));
+  if (!Number.isFinite(q)) throw new HttpError(400, "db_quota must be a number");
+  const r = await env.DB.prepare("UPDATE users SET db_quota = ? WHERE id = ?").bind(q, id).run();
+  if (!r.meta.changes) throw new HttpError(404, "no such user");
+  return json({ id, db_quota: q });
+}
+
 async function signUp(req: Request, env: Env): Promise<Response> {
   if (env.SIGNUP === "closed") throw new HttpError(403, "sign-ups are closed");
-  const b = await body<{ email?: string; password?: string; name?: string }>(req);
+  const b = await body<{ email?: string; password?: string; name?: string; device?: string }>(req);
   const { email, password } = validateCredentials(b.email, b.password);
   const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
   if (existing) throw new HttpError(409, "that email already has an account");
+
+  // Who is this device? The cookie survives sign-outs; the fingerprint
+  // survives cleared cookies. Either one matching an existing account links
+  // the new one to it, and the free allowance stays with the first.
+  const device = deviceOf(req);
+  const hash = typeof b.device === "string" && /^[a-f0-9]{64}$/.test(b.device) ? b.device : null;
+  const prior = await env.DB.prepare(
+    `SELECT id FROM users WHERE device_id = ? OR (? IS NOT NULL AND device_hash = ?) ORDER BY created_at LIMIT 1`,
+  ).bind(device.id, hash, hash).first<{ id: string }>();
+  const cf = (req as Request & { cf?: { country?: string } }).cf;
 
   // The first account to exist runs the place; everyone after is an ordinary user.
   const first = await env.DB.prepare("SELECT count(*) AS n FROM users").first<{ n: number }>();
@@ -536,17 +590,25 @@ async function signUp(req: Request, env: Env): Promise<Response> {
     password_hash: await hashPassword(password),
     name: (b.name ?? "").slice(0, 100) || null,
     is_admin: (first?.n ?? 0) === 0 ? 1 : 0,
-    db_quota: 3,
+    db_quota: prior ? 0 : 3,
     created_at: now(),
     last_seen_at: now(),
+    linked_to: prior?.id ?? null,
   };
   await env.DB.prepare(
-    `INSERT INTO users (id, email, password_hash, name, is_admin, db_quota, created_at, last_seen_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(user.id, user.email, user.password_hash, user.name, user.is_admin, user.db_quota, user.created_at, user.last_seen_at).run();
+    `INSERT INTO users (id, email, password_hash, name, is_admin, db_quota, created_at, last_seen_at,
+                        device_id, device_hash, signup_ip, signup_ua, signup_country, linked_to)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    user.id, user.email, user.password_hash, user.name, user.is_admin, user.db_quota, user.created_at, user.last_seen_at,
+    device.id, hash, req.headers.get("CF-Connecting-IP"), (req.headers.get("User-Agent") ?? "").slice(0, 300),
+    cf?.country ?? null, user.linked_to,
+  ).run();
 
   const token = await createSession(env.DB, user.id, req.headers.get("User-Agent"));
-  return json({ user: userView(user) }, 201, { "Set-Cookie": sessionCookie(token) });
+  const headers = new Headers({ "Set-Cookie": sessionCookie(token) });
+  headers.append("Set-Cookie", deviceCookie(device.id));
+  return json({ user: userView(user) }, 201, headers);
 }
 
 async function signIn(req: Request, env: Env): Promise<Response> {
@@ -558,7 +620,12 @@ async function signIn(req: Request, env: Env): Promise<Response> {
   if (!user || !ok) throw new HttpError(401, "wrong email or password");
   await env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(now(), user.id).run();
   const token = await createSession(env.DB, user.id, req.headers.get("User-Agent"));
-  return json({ user: userView(user) }, 200, { "Set-Cookie": sessionCookie(token) });
+  const device = deviceOf(req);
+  // An account that pre-dates device tracking adopts the first device it signs in from.
+  await env.DB.prepare("UPDATE users SET device_id = ? WHERE id = ? AND device_id IS NULL").bind(device.id, user.id).run();
+  const headers = new Headers({ "Set-Cookie": sessionCookie(token) });
+  headers.append("Set-Cookie", deviceCookie(device.id));
+  return json({ user: userView(user) }, 200, headers);
 }
 
 async function signOut(req: Request, env: Env): Promise<Response> {
@@ -637,6 +704,7 @@ async function route(req: Request, env: Env): Promise<Response> {
     await staff(req, env);
     if (id === "stats" && m === "GET") return adminStats(env);
     if (id === "users" && m === "GET") return adminUsers(env);
+    if (id === "users" && action && m === "PATCH") return adminSetQuota(req, env, action);
     throw new HttpError(404, "not found");
   }
 

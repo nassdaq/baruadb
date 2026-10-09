@@ -16,6 +16,9 @@ export type User = {
   db_quota: number;
   created_at: string;
   last_seen_at: string | null;
+  device_id?: string | null;
+  device_hash?: string | null;
+  linked_to?: string | null;
 };
 
 export const SESSION_COOKIE = "barua_session";

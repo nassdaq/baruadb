@@ -9,7 +9,11 @@ export type Me = {
   db_quota: number;
   created_at: string;
   last_seen_at?: string | null;
+  /** Opened from a device that already had an account; no free allowance until an admin says so. */
+  linked_to?: boolean;
 };
+
+export const BRANCHES_PER_DB = 2;
 
 export type Account = {
   user: Me;
@@ -25,6 +29,9 @@ export type AdminUser = {
   db_quota: number;
   created_at: string;
   last_seen_at: string | null;
+  signup_country?: string | null;
+  /** The earlier account on the same device, if this one was linked at sign-up. */
+  linked_email?: string | null;
   databases: number;
   branches: number;
   awake: number;
@@ -116,8 +123,8 @@ const post = <T>(path: string, body?: unknown) =>
 
 export const api = {
   me: () => call<{ user: Me | null }>("/auth/me"),
-  signUp: (email: string, password: string, name?: string) =>
-    post<{ user: Me }>("/auth/signup", { email, password, name }),
+  signUp: (email: string, password: string, name?: string, device?: string) =>
+    post<{ user: Me }>("/auth/signup", { email, password, name, device }),
   signIn: (email: string, password: string) => post<{ user: Me }>("/auth/login", { email, password }),
   signOut: () => post<{ ok: true }>("/auth/logout"),
 
@@ -143,6 +150,8 @@ export const api = {
   boxes: () => call<Box[]>("/boxes"),
   adminStats: () => call<AdminStats>("/admin/stats"),
   adminUsers: () => call<AdminUser[]>("/admin/users"),
+  adminSetQuota: (id: string, db_quota: number) =>
+    call<{ id: string; db_quota: number }>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify({ db_quota }) }),
   account: () => call<Account>("/auth/account"),
   updateAccount: (name: string) =>
     call<{ user: Me }>("/auth/account", { method: "PATCH", body: JSON.stringify({ name }) }),

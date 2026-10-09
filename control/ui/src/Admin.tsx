@@ -100,6 +100,21 @@ export function Admin() {
                           {u.is_admin && <Badge tone="accent">Admin</Badge>}
                         </div>
                         <div className="truncate text-xs text-faint">{u.email}</div>
+                        {u.linked_email && (
+                          <div className="mt-0.5 flex items-center gap-2 text-xs text-amber">
+                            Same device as {u.linked_email}
+                            {u.db_quota === 0 && (
+                              <button
+                                onClick={() =>
+                                  api.adminSetQuota(u.id, 3).then(() => api.adminUsers().then(setUsers)).catch((e) => setError(e.message))
+                                }
+                                className="rounded border border-line px-1.5 py-px text-[11px] text-dim hover:text-text"
+                              >
+                                Allow 3
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>

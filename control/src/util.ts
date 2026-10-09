@@ -4,11 +4,11 @@ export class HttpError extends Error {
   }
 }
 
-export function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: { "content-type": "application/json", ...headers },
-  });
+export function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
+  // A Headers object can carry two Set-Cookie lines; a plain record cannot.
+  const h = new Headers(headers);
+  h.set("content-type", "application/json");
+  return new Response(JSON.stringify(data, null, 2), { status, headers: h });
 }
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";

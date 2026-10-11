@@ -38,13 +38,13 @@ import pgliteData from "./pglite/pglite.data";
 // (scripts in /tmp/pglite-golden): every new database starts from it, so
 // initdb - which needs to run a child process - never runs in the Worker.
 import golden from "./pglite/golden.tar.gz";
+import { BlockFS } from "./blockfs";
 
 export interface Env {
   DATABASE: DurableObjectNamespace<Database>;
   HOME: R2Bucket;
 }
 
-const SAVE_AFTER_MS = 300;
 
 type Stats = {
   name: string;
@@ -61,8 +61,7 @@ type Stats = {
 
 export class Database extends DurableObject<Env> {
   #pg: Promise<PGlite> | null = null;
-  #dirty = false;
-  #saving: Promise<void> | null = null;
+  #fs: BlockFS | null = null;
   #stats: Stats = { name: "", openedFromSnapshot: false, openMs: null, snapshotBytes: null, savedAt: null, saves: 0, queries: 0, instance: Math.random().toString(36).slice(2, 8), lastSaveMs: null };
   // One wire message at a time: PGlite is a single session.
   #chain: Promise<unknown> = Promise.resolve();
@@ -76,20 +75,20 @@ export class Database extends DurableObject<Env> {
 
   async #open(): Promise<PGlite> {
     const t0 = Date.now();
-    const snap = await this.env.HOME.get(this.#key);
-    const bytes = snap ? await snap.arrayBuffer() : null;
+    // The data directory is the object's own storage; nothing is fetched.
+    // A database that has never opened gets the golden directory unpacked
+    // into storage on the way in.
+    const fs = new BlockFS(this.ctx.storage.sql, golden);
     const pg = await PGlite.create({
-      dataDir: "memory://",
+      fs,
       pgliteWasmModule: pgliteWasm,
       initdbWasmModule: initdbWasm,
       fsBundle: new Blob([pgliteData]),
-      loadDataDir: new Blob([bytes ?? golden]),
-      relaxedDurability: true,
       initialMemory: 512 * 65536,
     });
+    this.#fs = fs;
     this.#stats.name = this.#name;
-    this.#stats.openedFromSnapshot = !!bytes;
-    this.#stats.snapshotBytes = bytes?.byteLength ?? null;
+    this.#stats.openedFromSnapshot = fs.counters.imported === 0;
     this.#stats.openMs = Date.now() - t0;
     return pg;
   }
@@ -105,33 +104,8 @@ export class Database extends DurableObject<Env> {
     return this.#pg;
   }
 
-  /** Something may have changed: write the directory back soon. */
-  async #touch() {
-    this.#dirty = true;
-    await this.ctx.storage.setAlarm(Date.now() + SAVE_AFTER_MS);
-  }
-
-  async #save() {
-    if (!this.#dirty || !this.#pg) return;
-    this.#dirty = false;
-    const pg = await this.#pg;
-    const t0 = Date.now();
-    // Uncompressed: the tar is built in memory either way, and gzip's
-    // buffers on top of it were enough to tip the isolate over its limit.
-    const tar = await pg.dumpDataDir("none");
-    const buf = await tar.arrayBuffer();
-    await this.env.HOME.put(this.#key, buf);
-    this.#stats.lastSaveMs = Date.now() - t0;
-    console.log(`save ${this.#name}: ${buf.byteLength} bytes in ${this.#stats.lastSaveMs} ms (instance ${this.#stats.instance})`);
-    this.#stats.saves++;
-    this.#stats.savedAt = new Date().toISOString();
-    this.#stats.snapshotBytes = buf.byteLength;
-  }
-
-  async alarm() {
-    await this.#save();
-    if (this.#dirty) await this.ctx.storage.setAlarm(Date.now() + SAVE_AFTER_MS);
-  }
+  /** Every write already went through to storage; nothing to do. */
+  async #touch() {}
 
   // ---- JSON door
   async query(sql: string, params: unknown[] = []): Promise<unknown> {
@@ -139,15 +113,15 @@ export class Database extends DurableObject<Env> {
     const t0 = Date.now();
     const r = await pg.query(sql, params);
     this.#stats.queries++;
-    await this.#touch();
     return { rows: r.rows, fields: r.fields.map((f) => f.name), affected: r.affectedRows ?? 0, ms: Date.now() - t0 };
   }
 
-  async stats(): Promise<Stats & { loaded: boolean; dirty: boolean; heapBytes?: number; pgdataBytes?: number; files?: number }> {
-    const base = { ...this.#stats, loaded: !!this.#pg, dirty: this.#dirty };
+  async stats(): Promise<Stats & { loaded: boolean; storage?: ReturnType<BlockFS["summary"]>; heapBytes?: number; logicalBytes?: number; files?: number }> {
+    const base = { ...this.#stats, loaded: !!this.#pg, storage: this.#fs?.summary() };
     if (!this.#pg) return base;
-    // What the memory is spent on: the WASM heap, and the data directory
-    // held in the in-memory filesystem.
+    // The WASM heap, and the logical size of the /pglite tree (the data
+    // directory itself lives in storage now; only the share files and the
+    // block cache are in memory).
     const pg = await this.#pg;
     const mod = (pg as unknown as { Module: { HEAP8: Int8Array; FS: { readdir(p: string): string[]; stat(p: string): { size: number; mode: number }; isDir(m: number): boolean } } }).Module;
     let pgdataBytes = 0, files = 0;
@@ -160,16 +134,16 @@ export class Database extends DurableObject<Env> {
       }
     };
     try { walk("/pglite"); } catch { /* best effort */ }
-    return { ...base, heapBytes: mod.HEAP8.byteLength, pgdataBytes, files };
+    return { ...base, heapBytes: mod.HEAP8.byteLength, logicalBytes: pgdataBytes, files };
   }
 
-  /** Save and forget the in-memory database: what eviction does, on demand. */
-  async reset(): Promise<{ saved: boolean }> {
+  /** Forget the running engine: what eviction does, on demand. The data
+   *  directory is in storage, so there is nothing to save first. */
+  async reset(): Promise<{ closed: boolean }> {
     const had = !!this.#pg;
-    await this.#save();
-    if (this.#pg) await (await this.#pg).close();
-    this.#pg = null;
-    return { saved: had };
+    if (this.#pg) await (await this.#pg).close().catch(() => {});
+    this.#pg = null; this.#fs = null;
+    return { closed: had };
   }
 
   // ---- wire door: raw Postgres protocol over a WebSocket
@@ -187,13 +161,12 @@ export class Database extends DurableObject<Env> {
           const out = await pg.execProtocolRaw(bytes);
           this.#stats.queries++;
           if (out.byteLength) server.send(out);
-          await this.#touch();
         } catch (e) {
           server.close(1011, String(e).slice(0, 120));
         }
       });
     });
-    server.addEventListener("close", () => void this.#save());
+    server.addEventListener("close", () => {});
     return new Response(null, { status: 101, webSocket: client });
   }
 }

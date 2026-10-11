@@ -1,0 +1,35 @@
+# barua-lite: Postgres as a function. One Durable Object per database,
+# PGlite (Postgres compiled to WebAssembly) inside it, the data directory
+# persisted to R2. A spike: its own Worker, namespace and bucket, nothing
+# shared with the production control plane.
+name = "barua-lite"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[observability]
+enabled = true
+
+[[durable_objects.bindings]]
+name = "DATABASE"
+class_name = "Database"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Database"]
+
+[[r2_buckets]]
+binding = "HOME"
+bucket_name = "barua-lite"
+
+# PGlite ships a WebAssembly module and a filesystem image; both are bundled
+# as modules so nothing is compiled from bytes at runtime.
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
+fallthrough = true
+
+[[rules]]
+type = "Data"
+globs = ["**/*.data", "**/*.tar.gz"]
+fallthrough = true

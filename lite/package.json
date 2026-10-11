@@ -1,0 +1,22 @@
+{
+  "name": "barua-lite",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "bridge": "node bridge/bridge.mjs",
+    "postinstall": "node scripts/prepare.mjs",
+    "golden": "rm -rf .golden-build && mkdir -p .golden-build && cd .golden-build && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.8 --no-audit --no-fund --silent && node ../scripts/make-golden.mjs ../src/pglite/golden.tar.gz"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.40.0",
+    "pg": "^8.13.0"
+  }
+}

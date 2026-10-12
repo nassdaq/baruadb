@@ -485,9 +485,143 @@ export class Database extends DurableObject<Env> {
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data, null, 2), { status, headers: { "content-type": "application/json" } });
 
+
+// ---- MCP over HTTP: the thread database as a tool Claude can call directly.
+// Read-only (four SELECTs), authed by LITE_TOKEN like every other door. The
+// Streamable-HTTP transport: a JSON-RPC request per POST, a JSON response back.
+const MCP_DB = "claude-threads";
+const MCP_PROTO = "2025-06-18";
+const mcpWhen = (t: unknown) => (t ? new Date(String(t)).toISOString().replace("T", " ").slice(0, 16) : "");
+const mcpOne = (x: unknown, n = 600) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+
+async function mcpRows(env: Env, sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
+  const r = (await env.DATABASE.getByName(MCP_DB).query(sql, params)) as { rows: Record<string, unknown>[] };
+  return r.rows ?? [];
+}
+
+const MCP_TOOLS = [
+  {
+    name: "search_threads",
+    description:
+      "Full-text search across every past Claude Code conversation (all projects). Returns the best-matching turns with their thread, time, role and a snippet.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "words to search for" },
+        limit: { type: "integer", description: "max matches (default 20, max 50)" },
+        project: { type: "string", description: "restrict to a project directory name" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "list_threads",
+    description: "List recent conversation threads, most recent first: session id, project, title, message count and times.",
+    inputSchema: { type: "object", properties: { limit: { type: "integer" }, project: { type: "string" } } },
+  },
+  {
+    name: "get_thread",
+    description: "Return the spoken turns (user + assistant text) of one thread, chronological. Full or 8-char session id.",
+    inputSchema: { type: "object", properties: { session_id: { type: "string" }, limit: { type: "integer" } }, required: ["session_id"] },
+  },
+  { name: "thread_stats", description: "Totals for the thread database: messages, threads, size.", inputSchema: { type: "object", properties: {} } },
+];
+
+const MCP_HANDLERS: Record<string, (env: Env, a: Record<string, unknown>) => Promise<string>> = {
+  async search_threads(env, a) {
+    const q = String(a.query ?? "").trim();
+    if (!q) throw new Error("query is required");
+    const limit = Math.min(Math.max(1, Number(a.limit) || 20), 50);
+    const project = a.project ? String(a.project) : null;
+    const run = (tsq: string, arg: string) => {
+      const params: unknown[] = [arg];
+      let where = `to_tsvector('simple', coalesce(m.text,'') || ' ' || coalesce(m.tool_output,'')) @@ ${tsq}`;
+      if (project) { params.push(project); where += ` and t.project = $${params.length}`; }
+      params.push(limit);
+      return mcpRows(env,
+        `select m.session_id, t.title, t.project, m.role, m.kind, m.at, m.text, m.tool_output,
+                ts_rank_cd(to_tsvector('simple', coalesce(m.text,'') || ' ' || coalesce(m.tool_output,'')), ${tsq}) as rank
+           from messages m join threads t on t.session_id = m.session_id
+          where ${where} order by rank desc, m.at desc limit $${params.length}`, params);
+    };
+    let hits = await run("plainto_tsquery('simple', $1)", q);
+    if (!hits.length) {
+      const or = q.split(/\s+/).map((w) => w.replace(/[^\w]/g, "")).filter(Boolean).join(" | ");
+      if (or) hits = await run("to_tsquery('simple', $1)", or);
+    }
+    if (!hits.length) return `No matches for "${q}".`;
+    return [`${hits.length} matches for "${q}":`, "", ...hits.map((h) =>
+      `- ${mcpWhen(h.at)} · ${h.title ?? String(h.session_id).slice(0, 8)} (${String(h.session_id).slice(0, 8)}, ${h.project}) · ${h.role}/${h.kind}: ${mcpOne(h.text ?? h.tool_output)}`)].join("\n");
+  },
+  async list_threads(env, a) {
+    const limit = Math.min(Math.max(1, Number(a.limit) || 20), 100);
+    const project = a.project ? String(a.project) : null;
+    const params: unknown[] = []; let where = "";
+    if (project) { params.push(project); where = "where project = $1"; }
+    params.push(limit);
+    const rows = await mcpRows(env, `select session_id, project, title, last_at, messages from threads ${where} order by last_at desc nulls last limit $${params.length}`, params);
+    if (!rows.length) return "No threads yet.";
+    return [`${rows.length} recent threads:`, "", ...rows.map((t) => `- ${mcpWhen(t.last_at)} · ${t.messages} msgs · ${t.title ?? "(untitled)"} · ${t.project} · ${String(t.session_id).slice(0, 8)}`)].join("\n");
+  },
+  async get_thread(env, a) {
+    let sid = String(a.session_id ?? "");
+    if (!sid) throw new Error("session_id is required");
+    const limit = Math.min(Math.max(1, Number(a.limit) || 50), 400);
+    if (sid.length < 36) {
+      const m = (await mcpRows(env, `select session_id from threads where session_id like $1 order by last_at desc limit 1`, [sid + "%"]))[0];
+      if (!m) return `No thread starting with "${a.session_id}".`;
+      sid = String(m.session_id);
+    }
+    const t = (await mcpRows(env, `select title, project from threads where session_id = $1`, [sid]))[0];
+    const tail = (await mcpRows(env, `select role, at, text from messages where session_id = $1 and kind = 'text' and not sidechain order by at desc limit $2`, [sid, limit])).reverse();
+    const tools = (await mcpRows(env, `select count(*) as n from messages where session_id = $1 and kind = 'tool_use'`, [sid]))[0]?.n;
+    if (!tail.length) return `Thread ${sid.slice(0, 8)} has no spoken turns yet.`;
+    return `# ${t?.title ?? sid.slice(0, 8)} · ${t?.project ?? ""} · ${sid}\n${tail.length} spoken turns (${tools} tool calls not shown)\n\n` +
+      tail.map((m) => `- ${mcpWhen(m.at)} **${m.role}**: ${mcpOne(m.text, 900)}`).join("\n");
+  },
+  async thread_stats(env) {
+    const r = (await mcpRows(env, `select count(*) as messages, count(distinct session_id) as threads, pg_size_pretty(pg_database_size(current_database())) as size from messages`))[0];
+    return `Thread database "${MCP_DB}": ${r.messages} messages across ${r.threads} threads, ${r.size}.`;
+  },
+};
+
+const mcpCors = (r: Response) => {
+  r.headers.set("access-control-allow-origin", "*");
+  r.headers.set("access-control-allow-methods", "POST, OPTIONS");
+  r.headers.set("access-control-allow-headers", "authorization, content-type, mcp-session-id, mcp-protocol-version");
+  return r;
+};
+
+async function mcpHandle(request: Request, env: Env): Promise<Response> {
+  let msg: { id?: unknown; method?: string; params?: Record<string, unknown> };
+  try { msg = (await request.json()) as typeof msg; } catch { return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
+  const { id, method, params } = msg;
+  const reply = (result: unknown) => json({ jsonrpc: "2.0", id, result });
+  if (method === "initialize")
+    return reply({ protocolVersion: (params?.protocolVersion as string) || MCP_PROTO, capabilities: { tools: {} }, serverInfo: { name: "barua-threads", version: "1.0.0" } });
+  if (method === "ping") return reply({});
+  if (method === "tools/list") return reply({ tools: MCP_TOOLS });
+  if (method === "resources/list") return reply({ resources: [] });
+  if (method === "prompts/list") return reply({ prompts: [] });
+  if (method?.startsWith("notifications/")) return new Response(null, { status: 202 });
+  if (method === "tools/call") {
+    const fn = MCP_HANDLERS[String(params?.name)];
+    if (!fn) return reply({ content: [{ type: "text", text: `unknown tool ${params?.name}` }], isError: true });
+    try { return reply({ content: [{ type: "text", text: await fn(env, (params?.arguments as Record<string, unknown>) ?? {}) }] }); }
+    catch (e) { return reply({ content: [{ type: "text", text: "error: " + String((e as Error)?.message ?? e) }], isError: true }); }
+  }
+  return json({ jsonrpc: "2.0", id: id ?? null, error: { code: -32601, message: `method not found: ${method}` } });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    // The MCP door: its own CORS + preflight, then the shared token check.
+    if (url.pathname === "/mcp") {
+      if (request.method === "OPTIONS") return mcpCors(new Response(null, { status: 204 }));
+      if (!allowed(request, url, env)) return mcpCors(json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "a token is required" } }, 401));
+      return mcpCors(await mcpHandle(request, env));
+    }
     if (!allowed(request, url, env)) return json({ error: "a token is required" }, 401);
     const [, door, name, action] = url.pathname.split("/");
     if (!name || !/^[a-z][a-z0-9-]{0,40}$/.test(name)) return json({ error: "give a database name: /db/<name>/query or /wire/<name>" }, 400);

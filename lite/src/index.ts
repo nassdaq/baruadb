@@ -54,6 +54,7 @@ import pgliteData from "./pglite/pglite.data";
 // which needs to run a child process - never runs in the Worker.
 import golden from "./pglite/golden.tar.gz";
 import { BlockFS } from "./blockfs";
+import { handleOAuth, verifyAccessToken } from "./oauth";
 import { SqlSplitter } from "./splitter";
 import { pgDump } from "@electric-sql/pglite-tools/pg_dump";
 import pgDumpWasm from "./pglite/pg_dump.wasm";
@@ -69,6 +70,8 @@ export interface Env {
   LITE_TOKEN?: string;
   /** The control plane, told every few minutes what a busy database is doing. */
   CONTROL_URL?: string;
+  /** Consent-page password for the claude.ai OAuth flow; the master token works too. */
+  OAUTH_PASSWORD?: string;
 }
 
 /** Bearer header for the JSON door; ?token= for the WebSocket door, which
@@ -616,10 +619,20 @@ async function mcpHandle(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    // The MCP door: its own CORS + preflight, then the shared token check.
+    // OAuth + discovery (the auth flow itself) are open endpoints.
+    const oauth = await handleOAuth(request, url, env);
+    if (oauth) return oauth;
+    // The MCP door: CORS, then a Bearer that is either the master token or a
+    // minted OAuth access token; otherwise 401 pointing at the metadata so a
+    // client (claude.ai) can discover the authorization server.
     if (url.pathname === "/mcp") {
       if (request.method === "OPTIONS") return mcpCors(new Response(null, { status: 204 }));
-      if (!allowed(request, url, env)) return mcpCors(json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "a token is required" } }, 401));
+      const bearer = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? null;
+      if (!(await verifyAccessToken(env, bearer))) {
+        const r = mcpCors(json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "authorization required" } }, 401));
+        r.headers.set("WWW-Authenticate", `Bearer resource_metadata="${url.origin}/.well-known/oauth-protected-resource"`);
+        return r;
+      }
       return mcpCors(await mcpHandle(request, env));
     }
     if (!allowed(request, url, env)) return json({ error: "a token is required" }, 401);

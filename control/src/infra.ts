@@ -39,6 +39,8 @@ export interface Box {
   dns_record_id: string | null;
   created_at: string;
   last_seen: string | null;
+  /** The region this box is in (e.g. 'eu', 'tz'); 'default' until set. */
+  zone: string;
 }
 
 /** Call a box's agent API. Throws HttpError(502) when the box fails. */
@@ -116,14 +118,15 @@ export async function loadBox(env: Env, id: string): Promise<Box> {
 // Free memory minus ~100 MB for each awake database, plus a little for disk.
 const score = (b: Box) => b.mem_available_mb - b.databases_awake * 100 + Math.min(b.disk_free_mb, 50_000) / 100;
 
-/** The online, active box with the most headroom. */
-export async function pickBox(env: Env, prefer?: string): Promise<Box> {
+/** The online, active box with the most headroom, optionally within a region. */
+export async function pickBox(env: Env, prefer?: string, zone?: string): Promise<Box> {
   const { results } = await env.DB.prepare("SELECT * FROM boxes WHERE status = 'active'").all<Box>();
-  const online = results.filter(isOnline);
+  let online = results.filter(isOnline);
+  if (zone) online = online.filter((b) => b.zone === zone);
   const preferred = online.find((b) => b.id === prefer);
   if (preferred) return preferred;
   online.sort((a, b) => score(b) - score(a));
-  if (!online.length) throw new HttpError(503, "no box available; add one with deploy/install.sh");
+  if (!online.length) throw new HttpError(503, zone ? `no box in region '${zone}' yet` : "no box available; add one with deploy/install.sh");
   return online[0];
 }
 

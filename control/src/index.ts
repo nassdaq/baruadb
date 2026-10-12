@@ -114,6 +114,16 @@ function connectionUri(env: Env, db: DbRow, password?: string, pooled = false): 
   return `postgresql://${db.role}${pw}@${host}/${db.dbname}?sslmode=require`;
 }
 
+// Regions a customer can choose. A box is assigned one (admin); a database
+// pinned to one lands on metal there. Labels are what the console shows —
+// never an infrastructure name.
+const ZONE_LABELS: Record<string, string> = {
+  eu: "Europe · Amsterdam",
+  tz: "East Africa · Dar es Salaam",
+  default: "Default",
+};
+const zoneLabel = (z?: string | null) => (z ? ZONE_LABELS[z] ?? z : "Automatic");
+
 function dbView(env: Env, db: DbRow, c: Caller) {
   return {
     id: db.id,
@@ -130,6 +140,8 @@ function dbView(env: Env, db: DbRow, c: Caller) {
     // Transaction pooling: many clients, few backends. Session state does not
     // survive a transaction, which is the price.
     pooled_uri: connectionUri(env, db, undefined, true),
+    zone: db.zone,
+    region: db.zone ? zoneLabel(db.zone) : "Automatic",
     // Which engine holds it is an operator's concern, never a customer's.
     ...(c.kind === "admin" || (c.kind === "user" && c.isAdmin)
       ? { box_id: db.box_id, owner: db.owner, engine: db.engine, engine_since: db.engine_since }
@@ -142,11 +154,11 @@ function dbView(env: Env, db: DbRow, c: Caller) {
 async function insertDb(env: Env, db: DbRow): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO databases (id, name, owner, user_id, box_id, parent_id, role, dbname, status, password_enc, created_at,
-                            engine, engine_since, auth_verifier)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            engine, engine_since, auth_verifier, zone)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(db.id, db.name, db.owner, db.user_id, db.box_id, db.parent_id, db.role, db.dbname, db.status, db.password_enc,
-      db.created_at, db.engine, db.engine_since, db.auth_verifier)
+      db.created_at, db.engine, db.engine_since, db.auth_verifier, db.zone)
     .run();
 }
 
@@ -159,10 +171,13 @@ function engineFor(env: Env, c: Caller, asked?: string): Engine {
 }
 
 async function createDatabase(req: Request, env: Env, c: Caller): Promise<Response> {
-  const b = await body<{ name?: string; role?: string; database?: string; engine?: string }>(req);
+  const b = await body<{ name?: string; role?: string; database?: string; engine?: string; zone?: string }>(req);
   await checkQuota(env, c);
-  const box = await pickBox(env);
-  const engine = engineFor(env, c, b.engine);
+  // A requested region means a home on metal there, now — not the light tier.
+  const asked = (b.zone ?? "").trim().toLowerCase();
+  const pinned = asked && asked !== "auto" ? asked : null;
+  const box = pinned ? await pickBox(env, undefined, pinned) : await pickBox(env);
+  const engine: Engine = pinned ? "box" : engineFor(env, c, b.engine);
   const password = newPassword();
   const db: DbRow = {
     id: newId("br-"),
@@ -184,6 +199,7 @@ async function createDatabase(req: Request, env: Env, c: Caller): Promise<Respon
     engine,
     engine_since: now(),
     auth_verifier: engine === "function" ? await verifierFor(password) : null,
+    zone: pinned,
   };
   await insertDb(env, db);
   try {
@@ -379,30 +395,85 @@ async function adminMoves(env: Env): Promise<Response> {
 
 /** Move a database to another box (admin). With `force`, the source box is
  *  assumed dead: the database is rebuilt from R2 without asking it. */
+async function recordMove(env: Env, dbId: string, dir: string, reason: string, ok: boolean, detail: string, ms: number) {
+  await env.DB.prepare("INSERT INTO moves (db_id, direction, reason, ok, detail, ms, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(dbId, dir, reason, ok ? 1 : 0, detail, ms, now()).run().catch(() => {});
+}
+
+/** Move a box-engine database from the box it is on to another box, through
+ *  R2: flush the source, rebuild on the target from its own history, follow
+ *  with DNS. The same path serves an admin move and a region change. */
+async function moveToBox(env: Env, db: DbRow, target: Box, force: boolean, reason: string): Promise<void> {
+  const source = await loadBox(env, db.box_id);
+  if (target.id === source.id) return;
+  if (!isOnline(target)) throw new HttpError(409, `region '${target.zone}' has no box online`);
+  const t0 = Date.now();
+  if (!force) await agent(source, "POST", `/v1/databases/${db.id}/release`);
+  await env.DB.prepare("UPDATE databases SET box_id = ?, status = 'creating' WHERE id = ?").bind(target.id, db.id).run();
+  try {
+    await agent(target, "POST", "/v1/databases", {
+      id: db.id, role: db.role, database: db.dbname, parent: db.parent_id,
+      restore: { source: db.id, target: "latest" },
+    });
+    await setDns(env, db, target);
+  } catch (e) {
+    await recordMove(env, db.id, "move", reason, false, String(e), Date.now() - t0);
+    throw e;
+  }
+  await recordMove(env, db.id, "move", reason, true, `${source.id} → ${target.id}`, Date.now() - t0);
+}
+
 async function moveDatabase(req: Request, env: Env, id: string): Promise<Response> {
   const b = await body<{ box_id?: string; force?: boolean }>(req);
   const db = await loadDb(env, { kind: "admin" }, id);
   if (db.engine !== "box") throw new HttpError(409, "a function has no box to move from; change its tier instead");
-  const source = await loadBox(env, db.box_id);
   const target = b.box_id ? await loadBox(env, b.box_id) : await pickBox(env);
-  if (target.id === source.id) throw new HttpError(400, "database is already on that box");
-  if (!isOnline(target)) throw new HttpError(409, `box ${target.id} is offline`);
+  if (target.id === db.box_id) throw new HttpError(400, "database is already on that box");
+  await moveToBox(env, db, target, b.force ?? false, "by hand");
+  return json({ moved: db.id, from: db.box_id, to: target.id });
+}
 
-  if (!b.force) {
-    // Flush everything to R2 and forget it on the source. Abort if this fails.
-    await agent(source, "POST", `/v1/databases/${db.id}/release`);
+/** The regions a database can be pinned to: wherever a box is online. */
+async function zones(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare("SELECT * FROM boxes WHERE status = 'active'").all<Box>();
+  const count = new Map<string, number>();
+  for (const b of results.filter(isOnline)) count.set(b.zone, (count.get(b.zone) ?? 0) + 1);
+  const list = [...count].map(([zone, boxes]) => ({ zone, label: zoneLabel(zone), boxes }));
+  return json({ zones: list, note: "Pin a database to a region for a home on metal there, or 'auto' to let Barua place it." });
+}
+
+/** A customer sets (or clears) their database's region. Clearing returns it
+ *  to automatic placement; setting one moves it to a box there now. */
+async function setZone(req: Request, env: Env, c: Caller, id: string): Promise<Response> {
+  const db = await loadDb(env, c, id);
+  if (db.parent_id) throw new HttpError(409, "a branch stays with its parent's region");
+  const want = ((await body<{ zone?: string }>(req)).zone ?? "").trim().toLowerCase();
+  if (!want || want === "auto") {
+    await env.DB.prepare("UPDATE databases SET zone = NULL WHERE id = ?").bind(db.id).run();
+    return json({ id: db.id, zone: null, region: "Automatic", moved: false, note: "Placement is automatic again." });
   }
-  // From here on heartbeats fence the database on the source box.
-  await env.DB.prepare("UPDATE databases SET box_id = ?, status = 'creating' WHERE id = ?").bind(target.id, db.id).run();
-  await agent(target, "POST", "/v1/databases", {
-    id: db.id,
-    role: db.role,
-    database: db.dbname,
-    parent: db.parent_id,
-    restore: { source: db.id, target: "latest" },
-  });
-  await setDns(env, db, target);
-  return json({ moved: db.id, from: source.id, to: target.id });
+  const target = await pickBox(env, undefined, want).catch(() => null);
+  if (!target) throw new HttpError(400, `no region '${want}'. See GET /v1/zones for what is available.`);
+  const fresh: DbRow = { ...db, zone: want };
+  if (db.engine === "box") {
+    const here = await loadBox(env, db.box_id);
+    await env.DB.prepare("UPDATE databases SET zone = ? WHERE id = ?").bind(want, db.id).run();
+    if (here.zone === want) return json({ id: db.id, zone: want, region: zoneLabel(want), moved: false, note: `Already in ${zoneLabel(want)}.` });
+    await moveToBox(env, fresh, target, false, `pinned to ${want}`);
+  } else {
+    await env.DB.prepare("UPDATE databases SET zone = ? WHERE id = ?").bind(want, db.id).run();
+    await promote(env, fresh, `pinned to ${want}`, target);
+  }
+  return json({ id: db.id, zone: want, region: zoneLabel(want), moved: true, engine: "box", note: `Now on metal in ${zoneLabel(want)}.` });
+}
+
+/** Assign a box to a region (operator). */
+async function setBoxZone(req: Request, env: Env, id: string): Promise<Response> {
+  const zone = ((await body<{ zone?: string }>(req)).zone ?? "").trim().toLowerCase();
+  if (!/^[a-z][a-z0-9-]{0,20}$/.test(zone)) throw new HttpError(400, "zone must be a short slug like 'eu' or 'tz'");
+  const r = await env.DB.prepare("UPDATE boxes SET zone = ? WHERE id = ?").bind(zone, id).run();
+  if (!r.meta.changes) throw new HttpError(404, "no such box");
+  return json(boxView({ ...(await loadBox(env, id)) }));
 }
 
 // ---------------------------------------------------------------- boxes
@@ -441,6 +512,7 @@ async function joinBox(req: Request, env: Env): Promise<Response> {
     dns_record_id: null,
     created_at: now(),
     last_seen: now(),
+    zone: "default",
   };
   box.dns_record_id = await upsertDns(env, id, box.public_ip, null);
   await env.DB.prepare(
@@ -787,6 +859,11 @@ async function route(req: Request, env: Env): Promise<Response> {
     throw new HttpError(404, "not found");
   }
 
+  if (resource === "zones" && m === "GET") {
+    await caller(req, env);
+    return zones(env);
+  }
+
   if (resource === "boxes") {
     if (id === "join" && m === "POST") return joinBox(req, env);
     if (id && action === "heartbeat" && m === "POST") return heartbeat(req, env, id);
@@ -802,6 +879,7 @@ async function route(req: Request, env: Env): Promise<Response> {
       await env.DB.prepare("UPDATE boxes SET status = ? WHERE id = ?").bind(draining ? "draining" : "active", id).run();
       return json(boxView(await loadBox(env, id)));
     }
+    if (id && !action && m === "PATCH") return setBoxZone(req, env, id);
     if (id && !action && m === "DELETE") {
       const n = await env.DB.prepare("SELECT count(*) AS n FROM databases WHERE box_id = ?").bind(id).first<{ n: number }>();
       if (n?.n) throw new HttpError(409, `box still hosts ${n.n} databases; move them first`);
@@ -934,6 +1012,7 @@ async function route(req: Request, env: Env): Promise<Response> {
       await admin(req, env);
       return moveDatabase(req, env, id);
     }
+    if (id && action === "zone" && m === "POST") return setZone(req, env, c, id);
     if (id && action === "tier" && m === "POST") {
       await admin(req, env);
       return setTier(req, env, id);

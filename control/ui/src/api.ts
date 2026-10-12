@@ -105,7 +105,7 @@ export type AdminStats = {
 export type Move = {
   id: number;
   db_id: string;
-  direction: "up" | "down";
+  direction: "up" | "down" | "move";
   reason: string;
   ok: number;
   detail: string | null;

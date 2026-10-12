@@ -121,11 +121,11 @@ async function record(env: Env, db: string, direction: "up" | "down", reason: st
 /** Function -> box. The function is frozen first, so nothing written during
  *  the copy is lost; the box copy is born frozen, so nobody sees it half
  *  filled; the function is tombstoned only once the counts agree. */
-export async function promote(env: Env, db: DbRow, reason: string): Promise<Box> {
+export async function promote(env: Env, db: DbRow, reason: string, target?: Box): Promise<Box> {
   if (db.engine !== "function") throw new HttpError(409, "this database is already on a box");
   const password = await openPassword(env.PASSWORD_KEY, db.password_enc);
   if (!password) throw new HttpError(409, "no stored password for this database; reset it first");
-  const box = await pickBox(env, db.box_id);
+  const box = target ?? (await pickBox(env, db.box_id, db.zone ?? undefined));
   const t0 = Date.now();
   await lite(env, "POST", `/db/${db.id}/freeze`, { frozen: true });
   let created = false;
@@ -279,7 +279,7 @@ async function downCandidates(env: Env): Promise<UpCandidate[]> {
     const byId = new Map(live.map((d) => [d.id, d]));
     const { results } = await env.DB.prepare(
       `SELECT * FROM databases
-        WHERE engine = 'box' AND status = 'ready' AND parent_id IS NULL AND password_enc IS NOT NULL AND box_id = ?
+        WHERE engine = 'box' AND status = 'ready' AND parent_id IS NULL AND password_enc IS NOT NULL AND zone IS NULL AND box_id = ?
           AND coalesce(engine_since, created_at) < ?
           AND id NOT IN (SELECT parent_id FROM databases WHERE parent_id IS NOT NULL)`,
     ).bind(box.id, cutoff).all<DbRow>();

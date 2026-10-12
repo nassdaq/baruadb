@@ -146,7 +146,7 @@ export function Admin() {
                   <tr key={m.id} className="border-b border-line-soft last:border-0">
                     <td className="px-4 py-2 font-mono text-xs text-faint">{m.db_id}</td>
                     <td className="px-4 py-2">
-                      <Badge tone={m.ok ? "accent" : "neutral"}>{m.direction === "up" ? "to a box" : "to light"}</Badge>
+                      <Badge tone={m.ok ? "accent" : "neutral"}>{m.direction === "up" ? "to a box" : m.direction === "down" ? "to light" : "between regions"}</Badge>
                     </td>
                     <td className="px-4 py-2 text-dim">{m.reason}</td>
                     <td className="px-4 py-2 text-xs text-faint">{m.ok ? m.detail : `failed: ${m.detail}`}</td>

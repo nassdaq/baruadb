@@ -23,4 +23,6 @@ export interface DbRow {
   engine: Engine;
   engine_since: string | null;
   auth_verifier: string | null;
+  /** Requested region; NULL = automatic placement. */
+  zone: string | null;
 }

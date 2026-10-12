@@ -172,6 +172,19 @@ enum Step {
     Server(Option<Result<Message, tokio_tungstenite::tungstenite::Error>>),
 }
 
+/// The engine refused before a byte was relayed: frozen for a move, moved
+/// already, or gone. The cached route is stale either way; ask again and
+/// tell the client what is actually the case.
+async fn refused<S: AsyncWrite + Unpin>(app: &App, client: &mut S, id: &str) -> Result<()> {
+    app.routes.forget(id);
+    let (code, msg) = match lookup(app, id, true).await {
+        Ok(None) => ("3D000", format!("barua: database {id} does not exist")),
+        Ok(Some(r)) if r.engine != "function" => ("57P03", "barua: database is moving, try again in a moment".to_string()),
+        _ => ("57P03", "barua: database is not available, try again shortly".to_string()),
+    };
+    send_error(client, code, &msg).await
+}
+
 /// Serve one client session for a database that is not a cluster on this box.
 pub async fn session<S>(app: Arc<App>, mut client: S, id: &str, params: BTreeMap<String, String>) -> Result<()>
 where
@@ -257,17 +270,14 @@ where
             Ok(Step::Server(Some(Ok(Message::Close(frame))))) => {
                 debug!(db = id, ?frame, "relay closed by the engine");
                 if !relayed {
-                    // Frozen for a move, or moved already: look again next time.
-                    app.routes.forget(id);
-                    send_error(&mut client, "57P03", "barua: database is moving, try again in a moment").await?;
+                    refused(&app, &mut client, id).await?;
                 }
                 break;
             }
             Ok(Step::Server(Some(Ok(_)))) => {}
             Ok(Step::Server(Some(Err(e)))) => {
                 if !relayed {
-                    app.routes.forget(id);
-                    send_error(&mut client, "57P03", "barua: database is not available, try again shortly").await?;
+                    refused(&app, &mut client, id).await?;
                 }
                 bail!("relay: {e}");
             }

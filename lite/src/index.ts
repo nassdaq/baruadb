@@ -373,6 +373,9 @@ export class Database extends DurableObject<Env> {
   async endRestore(info: { statements: number; bytes: number }): Promise<unknown> {
     const pg = await this.#db();
     await pg.exec("checkpoint");
+    // The engine is one session: what pg_dump's preamble SET (an empty
+    // search_path, for one) would otherwise follow every client in.
+    await pg.exec("discard all");
     await this.#setFlags({ frozen: false });
     this.#schedule();
     return { ...info, storage: this.#fs?.summary() };
@@ -402,6 +405,13 @@ export class Database extends DurableObject<Env> {
     this.#sockets.add(server);
     const opened = Date.now();
     this.#worked(0, "session");
+    // One engine session serves every client in turn, so a client starts
+    // with the settings the previous one left behind unless they are reset
+    // here. (Best effort: RESET is allowed mid-transaction, and two clients
+    // open at once still share state - the price of a single session.)
+    this.#chain = this.#chain.then(async () => {
+      try { await (await this.#db()).exec("reset all"); } catch { /* the startup message will say why */ }
+    });
 
     let buf = new Uint8Array(0);
     let started = false;

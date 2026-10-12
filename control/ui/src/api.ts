@@ -95,9 +95,22 @@ export type Box = {
 
 export type AdminStats = {
   users: { total: number; admins: number };
-  databases: { total: number; awake: number; cold: number; failed: number; connections: number };
+  /** `light`: databases on the function engine, which cost nothing while idle. */
+  databases: { total: number; awake: number; cold: number; failed: number; light: number; connections: number };
   boxes: { total: number; databases_awake: number };
   signups: { day: string; n: number }[];
+};
+
+/** One move of a database between engines, by the loop or by hand. */
+export type Move = {
+  id: number;
+  db_id: string;
+  direction: "up" | "down";
+  reason: string;
+  ok: number;
+  detail: string | null;
+  ms: number | null;
+  at: string;
 };
 
 export class ApiError extends Error {
@@ -152,6 +165,7 @@ export const api = {
   adminUsers: () => call<AdminUser[]>("/admin/users"),
   adminSetQuota: (id: string, db_quota: number) =>
     call<{ id: string; db_quota: number }>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify({ db_quota }) }),
+  adminMoves: () => call<Move[]>("/admin/moves"),
   account: () => call<Account>("/auth/account"),
   updateAccount: (name: string) =>
     call<{ user: Me }>("/auth/account", { method: "PATCH", body: JSON.stringify({ name }) }),

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type AdminStats, type AdminUser, type Box } from "./api";
+import { api, type AdminStats, type AdminUser, type Box, type Move } from "./api";
 import { UsersIcon } from "@heroicons/react/24/outline";
 import { ago, Badge, Card, Dot, Empty, EmptyState, ErrorNote, Stat } from "./components";
 
@@ -9,6 +9,7 @@ export function Admin() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [boxes, setBoxes] = useState<Box[] | null>(null);
+  const [moves, setMoves] = useState<Move[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -16,6 +17,7 @@ export function Admin() {
     api.adminUsers().then(setUsers).catch((e) => setError(e.message));
     // Only the operator's token can list boxes; an admin user simply sees none.
     api.boxes().then(setBoxes).catch(() => setBoxes([]));
+    api.adminMoves().then(setMoves).catch(() => setMoves([]));
   }, []);
 
   if (error) return <ErrorNote>{error}</ErrorNote>;
@@ -26,10 +28,11 @@ export function Admin() {
       <h2 className="mb-5 text-[22px] font-semibold tracking-tight">Admin</h2>
 
       <Card className="mb-3.5 p-4">
-        <div className="grid grid-cols-4 gap-x-10 gap-y-6 lg:grid-cols-7">
+        <div className="grid grid-cols-4 gap-x-10 gap-y-6 lg:grid-cols-8">
           <Stat label="Users" value={stats.users.total} />
           <Stat label="Admins" value={stats.users.admins} />
           <Stat label="Databases" value={stats.databases.total} />
+          <Stat label="Light" value={stats.databases.light ?? 0} hint="Cost nothing while idle" />
           <Stat label="Awake" value={stats.databases.awake} />
           <Stat label="Archived" value={stats.databases.cold} />
           <Stat label="Failed" value={stats.databases.failed} />
@@ -132,6 +135,32 @@ export function Admin() {
           </table>
         )}
       </Card>
+
+      {moves.length > 0 && (
+        <>
+          <div className="mb-2.5 mt-6 text-[12px] text-dim">Moves between engines</div>
+          <Card className="mb-3.5 overflow-hidden">
+            <table className="w-full text-[13px]">
+              <tbody>
+                {moves.map((m) => (
+                  <tr key={m.id} className="border-b border-line-soft last:border-0">
+                    <td className="px-4 py-2 font-mono text-xs text-faint">{m.db_id}</td>
+                    <td className="px-4 py-2">
+                      <Badge tone={m.ok ? "accent" : "neutral"}>{m.direction === "up" ? "to a box" : "to light"}</Badge>
+                    </td>
+                    <td className="px-4 py-2 text-dim">{m.reason}</td>
+                    <td className="px-4 py-2 text-xs text-faint">{m.ok ? m.detail : `failed: ${m.detail}`}</td>
+                    <td className="px-4 py-2 text-right text-xs text-faint">
+                      {m.ms != null && `${(m.ms / 1000).toFixed(1)} s · `}
+                      {ago(m.at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </>
+      )}
 
       <div className="mb-2.5 mt-6 text-[12px] text-dim">Sign-ups</div>
       <Card className="p-4">

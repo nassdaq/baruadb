@@ -114,14 +114,16 @@ pub(crate) fn encode_startup(params: &BTreeMap<String, String>) -> Vec<u8> {
     buf.to_vec()
 }
 
-/// The shape of every id the control plane hands out. A hostname label that
-/// looks like one is routed even when it is not a cluster here, because the
-/// database may live in the function engine.
+/// A hostname label that could be a database id the control plane knows:
+/// routed even when it is not a cluster here, because it may live in the
+/// function engine. Any valid subdomain label qualifies (so `br-xxxx` and a
+/// named function database like `claude-threads` both route); an unknown one
+/// simply comes back from the control plane as "does not exist".
 fn looks_like_id(s: &str) -> bool {
-    s.len() <= 63
-        && s.starts_with("br-")
-        && s.len() > 3
-        && s[3..].bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    !s.is_empty()
+        && s.len() <= 63
+        && s.as_bytes()[0].is_ascii_lowercase()
+        && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// Work out the database id and strip routing hints from the params.

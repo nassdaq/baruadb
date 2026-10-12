@@ -143,7 +143,7 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
                         </Button>
                       }
                     >
-                      Postgres 16, asleep after five idle minutes, awake again on the next connection.
+                      Postgres, asleep while idle, awake again on the next connection.
                     </EmptyState>
                   )}
                 </td>

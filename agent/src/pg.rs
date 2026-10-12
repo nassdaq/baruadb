@@ -766,6 +766,25 @@ impl App {
         Ok(())
     }
 
+    /// Mid-move. Frozen, the proxy stops trusting this copy; whoever is
+    /// connected as the customer is cut off so that nothing is written here
+    /// that the move would not carry. The admin socket keeps working, which
+    /// is how the dump is taken.
+    pub async fn freeze(&self, id: &str, frozen: bool) -> Result<()> {
+        self.update_db(id, |d| d.frozen = frozen)?;
+        if frozen && self.runtime(id).is_running() {
+            let db = self.db(id)?;
+            let c = self.admin_client(&db, "postgres").await?;
+            c.batch_execute(&format!(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = {}",
+                literal(&db.role)
+            ))
+            .await?;
+        }
+        info!(db = id, frozen, "database freeze changed");
+        Ok(())
+    }
+
     /// Stop serving a database the control plane has placed elsewhere.
     pub async fn fence(&self, id: &str) -> Result<()> {
         self.update_db(id, |d| d.fenced = true)?;

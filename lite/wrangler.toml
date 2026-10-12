@@ -1,7 +1,7 @@
 # barua-lite: Postgres as a function. One Durable Object per database,
-# PGlite (Postgres compiled to WebAssembly) inside it, the data directory
-# persisted to R2. A spike: its own Worker, namespace and bucket, nothing
-# shared with the production control plane.
+# PGlite (Postgres compiled to WebAssembly) inside it, the data directory in
+# the object's own storage. The control plane (control/) sends new databases
+# here and moves them to a box when their numbers say so.
 name = "barua-lite"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
@@ -9,6 +9,14 @@ workers_dev = true
 
 [observability]
 enabled = true
+
+[vars]
+# Where a busy database reports on itself (see the alarm in src/index.ts).
+CONTROL_URL = "https://api.barua.app"
+
+# Secrets (wrangler secret put <NAME>):
+#   LITE_TOKEN - the one secret: callers show it to this Worker, and this
+#                Worker shows it to the control plane
 
 [[durable_objects.bindings]]
 name = "DATABASE"

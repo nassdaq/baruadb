@@ -49,6 +49,10 @@ pub struct DbRecord {
     pub error: Option<String>,
     /// The control plane moved this database elsewhere: never wake it here.
     pub fenced: bool,
+    /// Mid-move: the proxy must not trust this copy, and asks the control
+    /// plane where the database lives instead. Admin doors still work.
+    #[serde(default)]
+    pub frozen: bool,
     pub created_at: DateTime<Utc>,
     pub last_used_at: DateTime<Utc>,
     pub last_snapshot_at: Option<DateTime<Utc>>,
@@ -134,6 +138,8 @@ pub struct App {
     pub identity: Mutex<Option<Identity>>,
     /// Ensures only one template initdb runs at a time.
     pub template_lock: tokio::sync::Mutex<()>,
+    /// Where databases that are not on this disk live, as the control plane last said.
+    pub routes: crate::relay::Routes,
 }
 
 pub fn random_string(len: usize) -> String {
@@ -177,6 +183,7 @@ impl App {
             runtimes: Mutex::new(HashMap::new()),
             identity: Mutex::new(identity),
             template_lock: tokio::sync::Mutex::new(()),
+            routes: crate::relay::Routes::default(),
         }))
     }
 

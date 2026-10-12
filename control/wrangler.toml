@@ -29,9 +29,15 @@ crons = ["*/2 * * * *"] # mark silent boxes offline
 DB_DOMAIN = "pg.barua.app"
 # How the Worker reaches a box's agent API. {box} is the box id.
 AGENT_URL_TEMPLATE = "https://{box}.pg.barua.app"
+# The function engine (lite/). A new database is born there unless
+# NEW_DB_ENGINE says "box"; the loop in tier.ts moves databases between the
+# two by what they measure.
+LITE_URL = "https://barua-lite.kelvineffect.workers.dev"
+NEW_DB_ENGINE = "function"
 
 # Secrets (wrangler secret put <NAME>):
 #   ADMIN_TOKEN   - full access (create API keys, manage boxes)
 #   JOIN_TOKEN    - lets a new box join the cluster
 #   CF_API_TOKEN  - optional: Zone.DNS edit for barua.tz, for per-database DNS records
 #   CF_ZONE_ID    - optional: zone id of barua.tz
+#   LITE_TOKEN    - the function engine's secret (the same value as its LITE_TOKEN)

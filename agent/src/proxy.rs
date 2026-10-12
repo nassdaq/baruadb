@@ -8,6 +8,10 @@
 //! - TLS SNI:          `br-k3j9x2m1qa.pg.barua.tz` (libpq ≥ 14 sends it)
 //! - startup options:  `?options=endpoint%3Dbr-k3j9x2m1qa` (Neon-compatible)
 //! - user suffix:      `app--br-k3j9x2m1qa` (for clients that can do neither)
+//!
+//! A database that is not a cluster on this disk is still served from here:
+//! the control plane says where it lives and `relay` carries the session to
+//! the function engine (see relay.rs).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -94,7 +98,7 @@ fn parse_params(body: &[u8]) -> Result<BTreeMap<String, String>> {
     Ok(params)
 }
 
-fn encode_startup(params: &BTreeMap<String, String>) -> Vec<u8> {
+pub(crate) fn encode_startup(params: &BTreeMap<String, String>) -> Vec<u8> {
     let mut buf = BytesMut::new();
     buf.put_i32(0);
     buf.put_i32(PROTOCOL_V3);
@@ -110,10 +114,20 @@ fn encode_startup(params: &BTreeMap<String, String>) -> Vec<u8> {
     buf.to_vec()
 }
 
+/// The shape of every id the control plane hands out. A hostname label that
+/// looks like one is routed even when it is not a cluster here, because the
+/// database may live in the function engine.
+fn looks_like_id(s: &str) -> bool {
+    s.len() <= 63
+        && s.starts_with("br-")
+        && s.len() > 3
+        && s[3..].bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+}
+
 /// Work out the database id and strip routing hints from the params.
 /// Returns the database and whether the client asked for the pooled endpoint.
 fn route(app: &App, params: &mut BTreeMap<String, String>, sni: Option<&str>) -> Option<(String, bool)> {
-    let exists = |id: &str| app.meta(|m| m.databases.contains_key(id));
+    let exists = |id: &str| app.meta(|m| m.databases.contains_key(id)) || looks_like_id(id);
 
     // Options are always cleaned so Postgres never sees `endpoint=`.
     let mut from_options = None;
@@ -165,7 +179,7 @@ fn route(app: &App, params: &mut BTreeMap<String, String>, sni: Option<&str>) ->
     None
 }
 
-async fn send_error<S: AsyncWrite + Unpin>(s: &mut S, code: &str, msg: &str) -> Result<()> {
+pub(crate) async fn send_error<S: AsyncWrite + Unpin>(s: &mut S, code: &str, msg: &str) -> Result<()> {
     let mut body = BytesMut::new();
     for (tag, val) in [(b'S', "FATAL"), (b'V', "FATAL"), (b'C', code), (b'M', msg)] {
         body.put_u8(tag);
@@ -199,14 +213,11 @@ where
         send_error(&mut client, "3D000", &msg).await?;
         bail!("no database in startup packet (sni={sni:?})");
     };
-    if app.db(&id).is_err() {
-        send_error(
-            &mut client,
-            "3D000",
-            &format!("barua: database {id} does not exist on this box"),
-        )
-        .await?;
-        bail!("unknown database {id}");
+    // A cluster on this disk is served from it, unless it is frozen for a
+    // move; anything else is asked about and relayed.
+    let local = app.db(&id).ok().filter(|d| !d.frozen);
+    if local.is_none() {
+        return crate::relay::session(app, client, &id, params).await;
     }
 
     // Count the session before waking so the reaper can't put the database

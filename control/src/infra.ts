@@ -1,5 +1,6 @@
-// Talking to box agents and to Cloudflare DNS.
+// Talking to box agents, to the function engine, and to Cloudflare DNS.
 
+import { DbRow } from "./types";
 import { HttpError } from "./util";
 
 export interface Env {
@@ -7,6 +8,13 @@ export interface Env {
   SIGNUP?: string;
   /** Encrypts stored database passwords. Without it, none are kept. */
   PASSWORD_KEY?: string;
+  /** The function engine (the barua-lite Worker) and the one secret both
+   *  sides hold. Without them every database is born on a box. */
+  LITE_URL?: string;
+  LITE_TOKEN?: string;
+  /** Where a new database is born: "function" (default when the engine is
+   *  configured) or "box". */
+  NEW_DB_ENGINE?: string;
   DB: D1Database;
   DB_DOMAIN: string;
   AGENT_URL_TEMPLATE: string;
@@ -56,6 +64,78 @@ export async function agent<T = any>(box: Box, method: string, path: string, pay
   if (!res.ok) throw new HttpError(res.status === 404 ? 404 : 502, `box ${box.id}: ${data.error ?? res.status}`);
   return data as T;
 }
+
+// ---------------------------------------------------------------- function engine
+
+export const liteEnabled = (env: Env) => Boolean(env.LITE_URL && env.LITE_TOKEN);
+
+/** A raw request to the function engine; the caller reads the body. */
+export async function liteFetch(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
+  if (!liteEnabled(env)) throw new HttpError(503, "the function engine is not configured");
+  const headers = new Headers(init.headers);
+  headers.set("authorization", `Bearer ${env.LITE_TOKEN}`);
+  try {
+    return await fetch(`${env.LITE_URL}${path}`, { ...init, headers });
+  } catch (e) {
+    throw new HttpError(502, `function engine unreachable: ${e}`);
+  }
+}
+
+/** A JSON call to the function engine. Throws HttpError(502) when it fails. */
+export async function lite<T = any>(env: Env, method: string, path: string, payload?: unknown): Promise<T> {
+  const res = await liteFetch(env, path, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: payload === undefined ? undefined : JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { error: text };
+  }
+  if (!res.ok) throw new HttpError(res.status === 404 ? 404 : 502, `function engine: ${data.error ?? res.status}`);
+  return data as T;
+}
+
+/** The WebSocket door of one database, for the box's proxy to relay to. */
+export const wireUrl = (env: Env, id: string) => `${(env.LITE_URL ?? "").replace(/^http/, "ws")}/wire/${id}`;
+
+// ---------------------------------------------------------------- boxes
+
+const ONLINE_MS = 90_000;
+export const isOnline = (b: Box) => b.last_seen !== null && Date.now() - Date.parse(b.last_seen) < ONLINE_MS;
+
+export async function loadBox(env: Env, id: string): Promise<Box> {
+  const box = await env.DB.prepare("SELECT * FROM boxes WHERE id = ?").bind(id).first<Box>();
+  if (!box) throw new HttpError(404, `box ${id} not found`);
+  return box;
+}
+
+// Free memory minus ~100 MB for each awake database, plus a little for disk.
+const score = (b: Box) => b.mem_available_mb - b.databases_awake * 100 + Math.min(b.disk_free_mb, 50_000) / 100;
+
+/** The online, active box with the most headroom. */
+export async function pickBox(env: Env, prefer?: string): Promise<Box> {
+  const { results } = await env.DB.prepare("SELECT * FROM boxes WHERE status = 'active'").all<Box>();
+  const online = results.filter(isOnline);
+  const preferred = online.find((b) => b.id === prefer);
+  if (preferred) return preferred;
+  online.sort((a, b) => score(b) - score(a));
+  if (!online.length) throw new HttpError(503, "no box available; add one with deploy/install.sh");
+  return online[0];
+}
+
+export async function setDns(env: Env, db: DbRow, box: Box): Promise<void> {
+  const rec = await upsertDns(env, db.id, box.public_ip, db.dns_record_id);
+  if (rec !== db.dns_record_id) {
+    await env.DB.prepare("UPDATE databases SET dns_record_id = ? WHERE id = ?").bind(rec, db.id).run();
+    db.dns_record_id = rec;
+  }
+}
+
+// ---------------------------------------------------------------- DNS
 
 const dnsEnabled = (env: Env) => Boolean(env.CF_API_TOKEN && env.CF_ZONE_ID);
 

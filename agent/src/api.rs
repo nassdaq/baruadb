@@ -76,14 +76,30 @@ struct DbView {
     running: bool,
     connections: usize,
     memory_bytes: Option<u64>,
+    /// Bytes on disk for the whole cluster; absent when it is only in storage.
+    pgdata_bytes: Option<u64>,
+}
+
+fn dir_bytes(path: &std::path::Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(path) else { return 0 };
+    entries
+        .flatten()
+        .map(|e| match e.metadata() {
+            Ok(m) if m.is_dir() => dir_bytes(&e.path()),
+            Ok(m) => m.len(),
+            Err(_) => 0,
+        })
+        .sum()
 }
 
 fn view(app: &App, db: DbRecord) -> DbView {
     let rt = app.runtime(&db.id);
+    let pgdata = app.pgdata(&db.id);
     DbView {
         running: rt.is_running(),
         connections: rt.connections(),
         memory_bytes: app.cgroups.memory_current(&db.id),
+        pgdata_bytes: (db.location == Location::Local && pgdata.is_dir()).then(|| dir_bytes(&pgdata)),
         db,
     }
 }
@@ -103,6 +119,8 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/databases/{id}/dump", get(dump))
         .route("/v1/databases/{id}/release", post(release))
         .route("/v1/databases/{id}/password", post(password))
+        .route("/v1/databases/{id}/freeze", post(freeze))
+        .route("/v1/databases/{id}/load", post(load))
         .layer(middleware::from_fn_with_state(app.clone(), auth))
         .with_state(app)
 }
@@ -139,6 +157,10 @@ struct CreateReq {
     /// How often WAL is shipped for this database (seconds); the box default
     /// when absent. The control plane sets it per plan.
     archive_timeout_secs: Option<u32>,
+    /// Born frozen: the control plane is about to load it (a move up from
+    /// the function engine) and no client may see it half-filled.
+    #[serde(default)]
+    frozen: bool,
 }
 
 async fn create(
@@ -168,6 +190,7 @@ async fn create(
         location: Location::Local,
         error: None,
         fenced: false,
+        frozen: req.frozen,
         created_at: Utc::now(),
         last_used_at: Utc::now(),
         last_snapshot_at: None,
@@ -210,6 +233,78 @@ async fn create(
 #[derive(Deserialize)]
 struct DeleteQuery {
     purge: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct FreezeReq {
+    frozen: bool,
+}
+
+/// Frozen: the proxy stops trusting this copy and asks the control plane
+/// instead; open customer sessions are ended. Thawed: back to normal.
+async fn freeze(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<FreezeReq>,
+) -> ApiResult<serde_json::Value> {
+    app.freeze(&id, req.frozen).await?;
+    app.routes.forget(&id);
+    Ok(Json(json!({ "id": id, "frozen": req.frozen })))
+}
+
+/// Stream plain SQL into the database as its own role, stopping at the first
+/// error. This is how a database arrives from the function engine: its
+/// logical form, played back by psql.
+async fn load(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    body: axum::body::Body,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    use futures::StreamExt;
+    use tokio::io::AsyncWriteExt;
+    use tokio::process::Command;
+
+    let db = app.ensure_ready(&id).await.map_err(|e| ApiError(StatusCode::CONFLICT, format!("{e:#}")))?;
+    let _guard = crate::app::ConnectionGuard::new(app.runtime(&id));
+    let mut child = Command::new(app.cfg.pg("psql"))
+        .args(["-h", &app.db_dir(&id).to_string_lossy()])
+        .args(["-p", &db.port.to_string()])
+        .args(["-U", crate::pg::ADMIN_ROLE, "-d", &db.database])
+        .args(["-X", "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("psql: {e}")))?;
+    let mut stdin = child.stdin.take().expect("piped");
+    let fed = async {
+        stdin
+            .write_all(format!("SET ROLE {};\n", crate::pg::ident(&db.role)).as_bytes())
+            .await?;
+        let mut stream = body.into_data_stream();
+        let mut bytes = 0u64;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| std::io::Error::other(e.to_string()))?;
+            bytes += chunk.len() as u64;
+            stdin.write_all(&chunk).await?;
+        }
+        stdin.shutdown().await?;
+        drop(stdin);
+        Ok::<u64, std::io::Error>(bytes)
+    };
+    let (fed, out) = tokio::join!(fed, child.wait_with_output());
+    let out = out.map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("psql: {e}")))?;
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let tail: String = stderr.lines().rev().take(5).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+    // psql stopping at an error also breaks the pipe being fed: its own
+    // message is the one worth reporting.
+    if !out.status.success() {
+        warn!(db = id, "load failed: {tail}");
+        return Err(ApiError(StatusCode::CONFLICT, format!("load failed: {tail}")));
+    }
+    let bytes = fed.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("reading the body: {e}")))?;
+    info!(db = id, bytes, "loaded from SQL");
+    Ok(Json(json!({ "ok": true, "bytes": bytes })))
 }
 
 async fn delete(
@@ -258,20 +353,35 @@ async fn snapshots(
     Ok(Json(app.storage.list_snapshots(&id).await?))
 }
 
+#[derive(Deserialize)]
+struct DumpQuery {
+    /// Rows as INSERT statements rather than COPY: slower to load, but a
+    /// form every engine - including one with no COPY-from-stdin - can replay.
+    inserts: Option<bool>,
+}
+
 /// Stream a logical backup straight from pg_dump to the caller. Nothing is
 /// written to the box's disk: a database may be most of the free space, and a
 /// customer asking for a copy should not be able to fill the box to get it.
-async fn dump(State(app): State<AppState>, Path(id): Path<String>) -> Result<Response, ApiError> {
+async fn dump(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<DumpQuery>,
+) -> Result<Response, ApiError> {
     use tokio::process::Command;
 
     let db = app.ensure_ready(&id).await.map_err(|e| ApiError(StatusCode::CONFLICT, format!("{e:#}")))?;
     let _guard = crate::app::ConnectionGuard::new(app.runtime(&id));
 
-    let mut child = Command::new(app.cfg.pg("pg_dump"))
-        .args(["-h", &app.db_dir(&id).to_string_lossy()])
+    let mut cmd = Command::new(app.cfg.pg("pg_dump"));
+    cmd.args(["-h", &app.db_dir(&id).to_string_lossy()])
         .args(["-p", &db.port.to_string()])
         .args(["-U", crate::pg::ADMIN_ROLE])
-        .args(["--no-owner", "--no-privileges", "--format", "plain"])
+        .args(["--no-owner", "--no-privileges", "--format", "plain"]);
+    if q.inserts.unwrap_or(false) {
+        cmd.args(["--rows-per-insert", "200"]);
+    }
+    let mut child = cmd
         .arg(&db.database)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

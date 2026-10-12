@@ -1,15 +1,25 @@
 // barua-lite: Postgres as a function.
 //
-// One Durable Object per database. Inside it, PGlite — Postgres compiled to
-// WebAssembly, the real engine, not an imitation — with its data directory
-// in memory. The directory is restored from R2 when the object opens and
-// written back shortly after each change. While nobody is talking to it the
-// object is evicted and costs nothing; there is no process to keep warm,
-// because there is no process.
+// One Durable Object per database. Inside it, PGlite - Postgres compiled to
+// WebAssembly, the real engine, not an imitation - with its data directory
+// in the object's own storage (see blockfs.ts). While nobody is talking to
+// it the object is evicted and costs nothing; there is no process to keep
+// warm, because there is no process.
 //
-// Two doors: POST /db/<name>/query for JSON, and a WebSocket at
-// /wire/<name> that carries raw Postgres wire-protocol messages, so a bridge
-// can put psql, Prisma or Django in front of it unchanged.
+// Doors, all behind LITE_TOKEN:
+//   POST /db/<name>/query      JSON in, rows out (a script when no params)
+//   GET  /db/<name>/stats
+//   GET  /db/<name>/dump       pg_dump, plain SQL - the form that moves anywhere
+//   GET  /db/<name>/export     the data directory as a tarball (same-engine copies)
+//   POST /db/<name>/restore    plain SQL in, played back statement by statement
+//   POST /db/<name>/freeze     {frozen}: refuse sessions while a move is on
+//   POST /db/<name>/destroy    drop everything, leave a tombstone
+//   POST /db/<name>/reset      forget the running engine (what eviction does)
+//   WS   /wire/<name>          raw Postgres wire protocol, byte for byte
+//
+// A database that the control plane knows about reports on itself to it
+// every few minutes while it is busy (CONTROL_URL); the control plane uses
+// that to decide when a database should move to a box.
 import { DurableObject } from "cloudflare:workers";
 // Emscripten's web branch reads self.location.href to find its files. A
 // Worker has no location. Nothing is ever loaded from it - the modules are
@@ -35,10 +45,11 @@ import pgliteWasm from "./pglite/pglite.wasm";
 import initdbWasm from "./pglite/initdb.wasm";
 import pgliteData from "./pglite/pglite.data";
 // An empty, already-initialised data directory, built once in Node
-// (scripts in /tmp/pglite-golden): every new database starts from it, so
-// initdb - which needs to run a child process - never runs in the Worker.
+// (scripts/make-golden.mjs): every new database starts from it, so initdb -
+// which needs to run a child process - never runs in the Worker.
 import golden from "./pglite/golden.tar.gz";
 import { BlockFS } from "./blockfs";
+import { SqlSplitter } from "./splitter";
 import { pgDump } from "@electric-sql/pglite-tools/pg_dump";
 import pgDumpWasm from "./pglite/pg_dump.wasm";
 // pg_dump compiled to WebAssembly, handed its module the same way (see
@@ -49,8 +60,10 @@ import pgDumpWasm from "./pglite/pg_dump.wasm";
 export interface Env {
   DATABASE: DurableObjectNamespace<Database>;
   HOME: R2Bucket;
-  /** One shared secret for now; the control plane will issue per-database credentials later. */
+  /** One shared secret: callers show it to us, and we show it to the control plane. */
   LITE_TOKEN?: string;
+  /** The control plane, told every few minutes what a busy database is doing. */
+  CONTROL_URL?: string;
 }
 
 /** Bearer header for the JSON door; ?token= for the WebSocket door, which
@@ -64,35 +77,72 @@ function allowed(request: Request, url: URL, env: Env): boolean {
   return diff === 0;
 }
 
-
 type Stats = {
   name: string;
   openedFromSnapshot: boolean;
   openMs: number | null;
-  snapshotBytes: number | null;
-  savedAt: string | null;
-  saves: number;
   queries: number;
   /** Random per class instance: changes whenever the platform resets the object. */
   instance: string;
-  lastSaveMs: number | null;
 };
+
+/** Kept in storage, so they survive eviction. */
+type Flags = {
+  /** A move is on: refuse sessions until it is over. */
+  frozen?: boolean;
+  /** Moved away (or deleted): refuse forever, and never open the golden
+   *  directory as if this were a new database. */
+  tombstone?: string | null;
+  /** False once the control plane has said it does not know this name. */
+  managed?: boolean;
+};
+
+/** What has happened since the last report to the control plane. */
+type Beat = { queries: number; sessions: number; blocksWritten: number; activeMs: number; since: string };
+const freshBeat = (): Beat => ({ queries: 0, sessions: 0, blocksWritten: 0, activeMs: 0, since: new Date().toISOString() });
+
+const BEAT_EVERY_MS = 5 * 60_000;
+/** Cloudflare caps a WebSocket message at 1 MiB; responses go out in pieces. */
+const FRAME = 256 * 1024;
+const MAX_STARTUP = 10_000;
 
 export class Database extends DurableObject<Env> {
   #pg: Promise<PGlite> | null = null;
   #fs: BlockFS | null = null;
-  #stats: Stats = { name: "", openedFromSnapshot: false, openMs: null, snapshotBytes: null, savedAt: null, saves: 0, queries: 0, instance: Math.random().toString(36).slice(2, 8), lastSaveMs: null };
+  #stats: Stats = { name: "", openedFromSnapshot: false, openMs: null, queries: 0, instance: Math.random().toString(36).slice(2, 8) };
   // One wire message at a time: PGlite is a single session.
   #chain: Promise<unknown> = Promise.resolve();
+  #flags: Flags = {};
+  #beat: Beat = freshBeat();
+  #beatDirty = 0;
+  #alarmSet = false;
+  #sockets = new Set<WebSocket>();
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    ctx.blockConcurrencyWhile(async () => {
+      this.#flags = (await ctx.storage.get<Flags>("flags")) ?? {};
+      this.#beat = (await ctx.storage.get<Beat>("beat")) ?? freshBeat();
+      this.#alarmSet = (await ctx.storage.getAlarm()) !== null;
+    });
+  }
 
   get #name(): string {
     return this.ctx.id.name ?? "unnamed";
   }
-  get #key(): string {
-    return `dbs/${this.#name}/pgdata.tar.gz`;
+
+  async #setFlags(patch: Flags) {
+    this.#flags = { ...this.#flags, ...patch };
+    await this.ctx.storage.put("flags", this.#flags);
+  }
+
+  #refuse(force = false) {
+    if (this.#flags.tombstone) throw new Error("moved: this database now lives elsewhere");
+    if (this.#flags.frozen && !force) throw new Error("moving: this database is being moved, try again in a moment");
   }
 
   async #open(): Promise<PGlite> {
+    if (this.#flags.tombstone) throw new Error("moved: this database now lives elsewhere");
     const t0 = Date.now();
     // The data directory is the object's own storage; nothing is fetched.
     // A database that has never opened gets the golden directory unpacked
@@ -123,28 +173,109 @@ export class Database extends DurableObject<Env> {
     return this.#pg;
   }
 
-  /** Every write already went through to storage; nothing to do. */
-  async #touch() {}
+  // ---- what the control plane hears
+
+  /** Count a unit of work; make sure a report is scheduled. */
+  #worked(ms: number, what: "query" | "session" = "query") {
+    if (what === "query") this.#beat.queries++;
+    else this.#beat.sessions++;
+    this.#beat.activeMs += ms;
+    this.#stats.queries++;
+    // The counters live in memory and are written back now and then, so an
+    // eviction loses at most a few; the alarm is what must not be lost.
+    if (++this.#beatDirty >= 25) {
+      this.#beatDirty = 0;
+      void this.ctx.storage.put("beat", this.#beat);
+    }
+    this.#schedule();
+  }
+
+  #schedule() {
+    if (this.#alarmSet || !this.env.CONTROL_URL || this.#flags.managed === false) return;
+    this.#alarmSet = true;
+    void this.ctx.storage.setAlarm(Date.now() + BEAT_EVERY_MS);
+  }
+
+  async alarm() {
+    this.#alarmSet = false;
+    if (this.#fs) {
+      this.#beat.blocksWritten += this.#fs.counters.blocksWritten;
+      this.#fs.counters.blocksWritten = 0;
+    }
+    const busy = this.#beat.queries > 0 || this.#beat.sessions > 0 || this.#beat.blocksWritten > 0 || this.#sockets.size > 0;
+    if (busy) await this.#report();
+    this.#beat = freshBeat();
+    this.#beatDirty = 0;
+    await this.ctx.storage.put("beat", this.#beat);
+    // An open session keeps the reports coming; otherwise the object sleeps
+    // and the next query schedules the next one.
+    if (this.#sockets.size > 0) this.#schedule();
+  }
+
+  async #report() {
+    const url = this.env.CONTROL_URL;
+    if (!url || !this.env.LITE_TOKEN) return;
+    const storage = this.#fs?.summary().storedBytes ?? null;
+    try {
+      const res = await fetch(`${url}/v1/functions/beat`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.env.LITE_TOKEN}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          id: this.#name,
+          queries: this.#beat.queries,
+          sessions: this.#beat.sessions,
+          open_sessions: this.#sockets.size,
+          blocks_written: this.#beat.blocksWritten,
+          active_ms: this.#beat.activeMs,
+          storage_bytes: storage,
+          since: this.#beat.since,
+          at: new Date().toISOString(),
+        }),
+      });
+      if (!res.ok) return;
+      const r = (await res.json()) as { exists?: boolean; engine?: string };
+      // Not the control plane's: stop reporting. (The thread database is one
+      // of these; it is never touched from here.)
+      if (r.exists === false) await this.#setFlags({ managed: false });
+      // Moved up while this object slept: the box has it now.
+      else if (r.engine && r.engine !== "function" && !this.#flags.tombstone) await this.destroy();
+    } catch (e) {
+      console.warn("beat failed:", String(e));
+    }
+  }
 
   // ---- JSON door
-  async query(sql: string, params: unknown[] = []): Promise<unknown> {
+  async query(sql: string, params: unknown[] = [], force = false): Promise<unknown> {
+    this.#refuse(force);
     const pg = await this.#db();
     const t0 = Date.now();
     // With parameters: one prepared statement. Without: a script, any number
     // of statements, the last one's result comes back.
     let r: { rows: unknown[]; fields: { name: string }[]; affectedRows?: number };
     if (params.length) r = await pg.query(sql, params);
-    else { const all = await pg.exec(sql); r = all[all.length - 1] ?? { rows: [], fields: [] }; }
-    this.#stats.queries++;
-    return { rows: r.rows, fields: r.fields.map((f) => f.name), affected: r.affectedRows ?? 0, ms: Date.now() - t0 };
+    else {
+      const all = await pg.exec(sql);
+      r = all[all.length - 1] ?? { rows: [], fields: [] };
+    }
+    const ms = Date.now() - t0;
+    this.#worked(ms);
+    return { rows: r.rows, fields: r.fields.map((f) => f.name), affected: r.affectedRows ?? 0, ms };
   }
 
-  async stats(): Promise<Stats & { loaded: boolean; storage?: ReturnType<BlockFS["summary"]>; heapBytes?: number; logicalBytes?: number; files?: number }> {
-    const base = { ...this.#stats, loaded: !!this.#pg, storage: this.#fs?.summary() };
+  async stats(): Promise<Stats & { loaded: boolean; flags: Flags; beat: Beat; openSessions: number; alarm: boolean; storage?: ReturnType<BlockFS["summary"]>; heapBytes?: number; logicalBytes?: number; files?: number }> {
+    const base = {
+      ...this.#stats,
+      loaded: !!this.#pg,
+      flags: this.#flags,
+      beat: this.#beat,
+      openSessions: this.#sockets.size,
+      alarm: this.#alarmSet,
+      storage: this.#fs?.summary(),
+    };
     if (!this.#pg) return base;
     // The WASM heap, and the logical size of the /pglite tree (the data
-    // directory itself lives in storage now; only the share files and the
-    // block cache are in memory).
+    // directory itself lives in storage; only the share files and the block
+    // cache are in memory).
     const pg = await this.#pg;
     const mod = (pg as unknown as { Module: { HEAP8: Int8Array; FS: { readdir(p: string): string[]; stat(p: string): { size: number; mode: number }; isDir(m: number): boolean } } }).Module;
     let pgdataBytes = 0, files = 0;
@@ -153,7 +284,8 @@ export class Database extends DurableObject<Env> {
         if (n === "." || n === "..") continue;
         const p = `${dir}/${n}`;
         const st = mod.FS.stat(p);
-        if (mod.FS.isDir(st.mode)) walk(p); else { pgdataBytes += st.size; files++; }
+        if (mod.FS.isDir(st.mode)) walk(p);
+        else { pgdataBytes += st.size; files++; }
       }
     };
     try { walk("/pglite"); } catch { /* best effort */ }
@@ -164,6 +296,7 @@ export class Database extends DurableObject<Env> {
    *  This is the physical form: it restores onto another function engine
    *  (same wasm32 layout). A Linode box needs the logical form instead. */
   async exportTar(): Promise<ArrayBuffer> {
+    if (this.#flags.tombstone) throw new Error("moved: this database now lives elsewhere");
     const pg = await this.#db();
     await pg.exec("checkpoint");
     const blob = await this.#fs!.dumpTar();
@@ -171,8 +304,10 @@ export class Database extends DurableObject<Env> {
   }
 
   /** The database as plain SQL - schema and INSERTs - via pg_dump. This is
-   *  the form that restores on any Postgres, including a Linode box. */
+   *  the form that restores on any Postgres, including a Linode box. Allowed
+   *  while frozen: it is how a move takes its copy. */
   async dumpSql(): Promise<string> {
+    if (this.#flags.tombstone) throw new Error("moved: this database now lives elsewhere");
     const pg = await this.#db();
     const file = await pgDump({ pg, args: ["--no-owner", "--no-privileges"] });
     return file.text();
@@ -183,31 +318,151 @@ export class Database extends DurableObject<Env> {
   async reset(): Promise<{ closed: boolean }> {
     const had = !!this.#pg;
     if (this.#pg) await (await this.#pg).close().catch(() => {});
-    this.#pg = null; this.#fs = null;
+    this.#pg = null;
+    this.#fs = null;
     return { closed: had };
   }
 
+  #closeSessions(code: number, reason: string) {
+    for (const ws of this.#sockets) {
+      try { ws.close(code, reason); } catch { /* already gone */ }
+    }
+    this.#sockets.clear();
+  }
+
+  /** A move is on (or over). Frozen, new sessions are refused and open ones
+   *  are cut, so nothing is written here that the move would not carry. */
+  async freeze(frozen: boolean): Promise<Flags> {
+    await this.#setFlags({ frozen });
+    if (frozen) this.#closeSessions(4013, "moving");
+    return this.#flags;
+  }
+
+  /** Gone: the database was deleted, or it moved to a box. Everything is
+   *  dropped except a tombstone, so a client with a stale route is refused
+   *  rather than handed an empty database under the old name. */
+  async destroy(): Promise<{ destroyed: boolean }> {
+    this.#closeSessions(4001, "moved");
+    await this.reset();
+    await this.ctx.storage.deleteAlarm();
+    this.#alarmSet = false;
+    await this.ctx.storage.deleteAll();
+    this.#flags = { tombstone: new Date().toISOString() };
+    await this.ctx.storage.put("flags", this.#flags);
+    this.#beat = freshBeat();
+    return { destroyed: true };
+  }
+
+  // ---- restore: three calls, so the Worker can stream the SQL through
+  async beginRestore(): Promise<void> {
+    this.#closeSessions(4013, "moving");
+    await this.reset();
+    await this.ctx.storage.deleteAll();
+    this.#flags = { frozen: true };
+    await this.ctx.storage.put("flags", this.#flags);
+    await this.#db(); // a fresh golden directory
+  }
+
+  async exec(sql: string): Promise<void> {
+    const pg = await this.#db();
+    const t0 = Date.now();
+    await pg.exec(sql);
+    this.#beat.activeMs += Date.now() - t0;
+  }
+
+  async endRestore(info: { statements: number; bytes: number }): Promise<unknown> {
+    const pg = await this.#db();
+    await pg.exec("checkpoint");
+    await this.#setFlags({ frozen: false });
+    this.#schedule();
+    return { ...info, storage: this.#fs?.summary() };
+  }
+
   // ---- wire door: raw Postgres protocol over a WebSocket
+  //
+  // (Close codes are 1000 or 4xxx: those are the ones a Worker may send.)
+  // Frames and messages are different things: a client may send half a
+  // message in one frame and three in the next. The engine wants whole
+  // messages, one call each, so bytes are gathered here and cut on message
+  // boundaries - the first message is the untyped startup packet, every one
+  // after it is a type byte and a length.
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get("Upgrade") !== "websocket") return new Response("expected websocket", { status: 426 });
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     server.accept();
-    server.addEventListener("message", (ev) => {
-      if (!(ev.data instanceof ArrayBuffer)) return;
-      const bytes = new Uint8Array(ev.data);
+    if (this.#flags.tombstone) {
+      server.close(4001, "moved");
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    if (this.#flags.frozen) {
+      server.close(4013, "moving");
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    this.#sockets.add(server);
+    const opened = Date.now();
+    this.#worked(0, "session");
+
+    let buf = new Uint8Array(0);
+    let started = false;
+    const append = (more: Uint8Array) => {
+      const next = new Uint8Array(buf.length + more.length);
+      next.set(buf);
+      next.set(more, buf.length);
+      buf = next;
+    };
+    const send = (out: Uint8Array) => {
+      for (let i = 0; i < out.length; i += FRAME) server.send(out.subarray(i, Math.min(i + FRAME, out.length)));
+    };
+    const run = (msg: Uint8Array) => {
       this.#chain = this.#chain.then(async () => {
+        if (server.readyState !== WebSocket.READY_STATE_OPEN) return;
         try {
           const pg = await this.#db();
-          const out = await pg.execProtocolRaw(bytes);
-          this.#stats.queries++;
-          if (out.byteLength) server.send(out);
+          const t0 = Date.now();
+          const out = await pg.execProtocolRaw(msg);
+          this.#worked(Date.now() - t0);
+          if (out.byteLength) send(out);
         } catch (e) {
-          server.close(1011, String(e).slice(0, 120));
+          server.close(4011, String(e).slice(0, 120));
         }
       });
+    };
+
+    server.addEventListener("message", (ev) => {
+      if (!(ev.data instanceof ArrayBuffer)) return;
+      append(new Uint8Array(ev.data));
+      for (;;) {
+        const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+        if (!started) {
+          if (buf.length < 4) return;
+          const len = view.getUint32(0);
+          if (len < 8 || len > MAX_STARTUP) return server.close(4002, "bad startup packet");
+          if (buf.length < len) return;
+          run(buf.slice(0, len));
+          buf = buf.slice(len);
+          started = true;
+          continue;
+        }
+        if (buf.length < 5) return;
+        const len = view.getUint32(1) + 1;
+        if (buf.length < len) return;
+        const msg = buf.slice(0, len);
+        buf = buf.slice(len);
+        // Terminate: the session is over. Not handed to the engine, which
+        // would take it as the end of its one and only session.
+        if (msg[0] === 0x58) {
+          this.#chain = this.#chain.then(() => server.close(1000, "terminated"));
+          return;
+        }
+        run(msg);
+      }
     });
-    server.addEventListener("close", () => {});
+    const gone = () => {
+      if (this.#sockets.delete(server)) this.#beat.activeMs += Math.min(Date.now() - opened, BEAT_EVERY_MS);
+    };
+    server.addEventListener("close", gone);
+    server.addEventListener("error", gone);
     return new Response(null, { status: 101, webSocket: client });
   }
 }
@@ -222,6 +477,7 @@ export default {
     const [, door, name, action] = url.pathname.split("/");
     if (!name || !/^[a-z][a-z0-9-]{0,40}$/.test(name)) return json({ error: "give a database name: /db/<name>/query or /wire/<name>" }, 400);
     const stub = env.DATABASE.getByName(name);
+    const force = url.searchParams.get("force") === "1";
 
     if (door === "wire") return stub.fetch(request);
     if (door !== "db") return json({ error: "not found" }, 404);
@@ -230,7 +486,7 @@ export default {
       if (action === "query" && request.method === "POST") {
         const b = (await request.json()) as { sql?: string; params?: unknown[] };
         if (!b.sql) return json({ error: "sql is required" }, 400);
-        return json(await stub.query(b.sql, b.params ?? []));
+        return json(await stub.query(b.sql, b.params ?? [], force));
       }
       if (action === "stats") return json(await stub.stats());
       if (action === "dump" && request.method === "GET") {
@@ -242,9 +498,44 @@ export default {
         return new Response(buf, { headers: { "content-type": "application/gzip", "content-disposition": `attachment; filename="${name}.tar.gz"`, "content-length": String(buf.byteLength) } });
       }
       if (action === "reset" && request.method === "POST") return json(await stub.reset());
+      if (action === "freeze" && request.method === "POST") {
+        const b = (await request.json().catch(() => ({}))) as { frozen?: boolean };
+        return json(await stub.freeze(b.frozen !== false));
+      }
+      if (action === "destroy" && request.method === "POST") return json(await stub.destroy());
+      if (action === "restore" && request.method === "POST") {
+        if (!request.body) return json({ error: "a SQL body is required" }, 400);
+        await stub.beginRestore();
+        const splitter = new SqlSplitter();
+        const reader = request.body.pipeThrough(new TextDecoderStream()).getReader();
+        let statements = 0, bytes = 0;
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            bytes += value.length;
+            for (const chunk of splitter.push(value)) {
+              await stub.exec(chunk.sql);
+              statements += chunk.count;
+            }
+          }
+          const last = splitter.flush();
+          if (last.sql.trim()) {
+            await stub.exec(last.sql);
+            statements += last.count;
+          }
+        } catch (e) {
+          // Half a database is worse than none: leave a tombstone, not a stub.
+          await stub.destroy().catch(() => {});
+          return json({ error: `restore failed after ${statements} statements: ${String(e).slice(0, 300)}` }, 500);
+        }
+        return json(await stub.endRestore({ statements, bytes }));
+      }
     } catch (e) {
       const err = e as Error;
-      return json({ error: String(err), stack: (err.stack ?? "").split("\n").slice(0, 6) }, 500);
+      const msg = String(err);
+      const status = msg.includes("moved:") ? 410 : msg.includes("moving:") ? 409 : 500;
+      return json({ error: msg, stack: status === 500 ? (err.stack ?? "").split("\n").slice(0, 6) : undefined }, status);
     }
     return json({ error: "not found" }, 404);
   },

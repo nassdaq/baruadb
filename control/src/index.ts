@@ -1,8 +1,24 @@
 // BaruaDB control plane: accounts, databases and boxes live in D1; the
 // Postgres work happens on the boxes, which this Worker drives over HTTPS.
 
-import { agent, Box, deleteDns, Env, upsertDns } from "./infra";
+import {
+  agent,
+  Box,
+  deleteDns,
+  Env,
+  isOnline,
+  lite,
+  liteEnabled,
+  liteFetch,
+  loadBox,
+  pickBox,
+  setDns,
+  upsertDns,
+  wireUrl,
+} from "./infra";
 import { openPassword, sealPassword } from "./secrets";
+import { demote, promote, tierPass, verifierFor } from "./tier";
+import { DbRow, Engine } from "./types";
 import {
   createSession,
   destroySession,
@@ -29,24 +45,6 @@ import {
   timingSafeEqual,
 } from "./util";
 
-interface DbRow {
-  id: string;
-  name: string;
-  owner: string;
-  user_id: string | null;
-  box_id: string;
-  parent_id: string | null;
-  role: string;
-  dbname: string;
-  status: string;
-  location: string;
-  running: number;
-  connections: number;
-  dns_record_id: string | null;
-  password_enc: string | null;
-  created_at: string;
-}
-
 // Three ways to arrive: the operator's admin token, a signed-in person, or an
 // API key belonging to one. A person and their keys share an owner id, so a
 // database created in the dashboard is visible to that person's keys too.
@@ -54,9 +52,6 @@ type Caller =
   | { kind: "admin" }
   | { kind: "user"; id: string; isAdmin: boolean; user: User }
   | { kind: "key"; id: string };
-
-const ONLINE_MS = 90_000;
-const isOnline = (b: Box) => b.last_seen !== null && Date.now() - Date.parse(b.last_seen) < ONLINE_MS;
 
 // ---------------------------------------------------------------- auth
 
@@ -96,30 +91,10 @@ async function loadDb(env: Env, c: Caller, id: string): Promise<DbRow> {
   return row;
 }
 
-async function loadBox(env: Env, id: string): Promise<Box> {
-  const box = await env.DB.prepare("SELECT * FROM boxes WHERE id = ?").bind(id).first<Box>();
-  if (!box) throw new HttpError(404, `box ${id} not found`);
-  return box;
-}
-
-// ---------------------------------------------------------------- placement
-
-/** The online, active box with the most headroom. */
-async function pickBox(env: Env, prefer?: string): Promise<Box> {
-  const { results } = await env.DB.prepare("SELECT * FROM boxes WHERE status = 'active'").all<Box>();
-  const online = results.filter(isOnline);
-  const preferred = online.find((b) => b.id === prefer);
-  if (preferred) return preferred;
-  online.sort((a, b) => score(b) - score(a));
-  if (!online.length) throw new HttpError(503, "no box available; add one with deploy/install.sh");
-  return online[0];
-}
-
-// Free memory minus ~100 MB for each awake database, plus a little for disk.
-const score = (b: Box) => b.mem_available_mb - b.databases_awake * 100 + Math.min(b.disk_free_mb, 50_000) / 100;
-
-/** Ask the box for live state and store it (heartbeats only run every 20 s). */
+/** Ask the box for live state and store it (heartbeats only run every 20 s).
+ *  A function has no box to ask: its row is what its beats last said. */
 async function refresh(env: Env, db: DbRow): Promise<Record<string, unknown>> {
+  if (db.engine === "function") return { status: db.status, running: db.running === 1 };
   const live = await agent(await loadBox(env, db.box_id), "GET", `/v1/databases/${db.id}`);
   db.status = live.status;
   db.location = live.location;
@@ -155,7 +130,10 @@ function dbView(env: Env, db: DbRow, c: Caller) {
     // Transaction pooling: many clients, few backends. Session state does not
     // survive a transaction, which is the price.
     pooled_uri: connectionUri(env, db, undefined, true),
-    ...(c.kind === "admin" ? { box_id: db.box_id, owner: db.owner } : {}),
+    // Which engine holds it is an operator's concern, never a customer's.
+    ...(c.kind === "admin" || (c.kind === "user" && c.isAdmin)
+      ? { box_id: db.box_id, owner: db.owner, engine: db.engine, engine_since: db.engine_since }
+      : {}),
   };
 }
 
@@ -163,25 +141,29 @@ function dbView(env: Env, db: DbRow, c: Caller) {
 
 async function insertDb(env: Env, db: DbRow): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO databases (id, name, owner, user_id, box_id, parent_id, role, dbname, status, password_enc, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'creating', ?, ?)`,
+    `INSERT INTO databases (id, name, owner, user_id, box_id, parent_id, role, dbname, status, password_enc, created_at,
+                            engine, engine_since, auth_verifier)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(db.id, db.name, db.owner, db.user_id, db.box_id, db.parent_id, db.role, db.dbname, db.password_enc, db.created_at)
+    .bind(db.id, db.name, db.owner, db.user_id, db.box_id, db.parent_id, db.role, db.dbname, db.status, db.password_enc,
+      db.created_at, db.engine, db.engine_since, db.auth_verifier)
     .run();
 }
 
-async function setDns(env: Env, db: DbRow, box: Box): Promise<void> {
-  const rec = await upsertDns(env, db.id, box.public_ip, db.dns_record_id);
-  if (rec !== db.dns_record_id) {
-    await env.DB.prepare("UPDATE databases SET dns_record_id = ? WHERE id = ?").bind(rec, db.id).run();
-    db.dns_record_id = rec;
-  }
+/** Where a new database is born. The function engine when it is configured
+ *  and nothing says otherwise; the operator may ask for a box outright. */
+function engineFor(env: Env, c: Caller, asked?: string): Engine {
+  if (!liteEnabled(env)) return "box";
+  if (c.kind === "admin" && (asked === "box" || asked === "function")) return asked;
+  return env.NEW_DB_ENGINE === "box" ? "box" : "function";
 }
 
 async function createDatabase(req: Request, env: Env, c: Caller): Promise<Response> {
-  const b = await body<{ name?: string; role?: string; database?: string }>(req);
+  const b = await body<{ name?: string; role?: string; database?: string; engine?: string }>(req);
   await checkQuota(env, c);
   const box = await pickBox(env);
+  const engine = engineFor(env, c, b.engine);
+  const password = newPassword();
   const db: DbRow = {
     id: newId("br-"),
     name: (b.name ?? "main").slice(0, 100),
@@ -191,20 +173,24 @@ async function createDatabase(req: Request, env: Env, c: Caller): Promise<Respon
     parent_id: null,
     role: checkName("role", b.role ?? "app"),
     dbname: checkName("database", b.database ?? "app"),
-    status: "creating",
+    // A function needs no creating: its object materialises on first use.
+    status: engine === "function" ? "ready" : "creating",
     location: "local",
     running: 0,
     connections: 0,
     dns_record_id: null,
-    password_enc: null,
+    password_enc: await sealPassword(env.PASSWORD_KEY, password),
     created_at: now(),
+    engine,
+    engine_since: now(),
+    auth_verifier: engine === "function" ? await verifierFor(password) : null,
   };
-  const password = newPassword();
-  db.password_enc = await sealPassword(env.PASSWORD_KEY, password);
   await insertDb(env, db);
   try {
     await setDns(env, db, box);
-    await agent(box, "POST", "/v1/databases", { id: db.id, role: db.role, database: db.dbname, password });
+    if (engine === "box") {
+      await agent(box, "POST", "/v1/databases", { id: db.id, role: db.role, database: db.dbname, password });
+    }
   } catch (e) {
     await env.DB.prepare("DELETE FROM databases WHERE id = ?").bind(db.id).run();
     await deleteDns(env, db.dns_record_id);
@@ -227,12 +213,18 @@ async function createDatabase(req: Request, env: Env, c: Caller): Promise<Respon
 const BRANCHES_PER_DB = 2;
 
 async function createBranch(req: Request, env: Env, c: Caller, parentId: string): Promise<Response> {
-  const parent = await loadDb(env, c, parentId);
+  let parent = await loadDb(env, c, parentId);
   if (parent.parent_id) throw new HttpError(400, "branches come from a primary database, not from another branch");
   const have = await env.DB.prepare("SELECT count(*) AS n FROM databases WHERE parent_id = ?")
     .bind(parent.id).first<{ n: number }>();
   if ((have?.n ?? 0) >= BRANCHES_PER_DB) {
     throw new HttpError(403, `a database can have ${BRANCHES_PER_DB} branches; delete one to make another`);
+  }
+  // Branches come from a database's history, which only the box engine
+  // keeps. A function that gets branched moves up first, in this request.
+  if (parent.engine === "function") {
+    await promote(env, parent, "branched");
+    parent = await loadDb(env, c, parentId);
   }
   if (parent.status !== "ready") await refresh(env, parent);
   if (parent.status !== "ready") throw new HttpError(409, `parent database is ${parent.status}`);
@@ -287,10 +279,16 @@ async function createBranch(req: Request, env: Env, c: Caller, parentId: string)
 
 async function deleteDatabase(env: Env, c: Caller, id: string): Promise<Response> {
   const db = await loadDb(env, c, id);
-  const box = await loadBox(env, db.box_id);
-  await agent(box, "DELETE", `/v1/databases/${db.id}?purge=true`).catch((e) => {
-    if (!(e instanceof HttpError && e.status === 404)) throw e;
-  });
+  if (db.engine === "function") {
+    await lite(env, "POST", `/db/${db.id}/destroy`).catch((e) => {
+      if (!(e instanceof HttpError && e.status === 404)) throw e;
+    });
+  } else {
+    const box = await loadBox(env, db.box_id);
+    await agent(box, "DELETE", `/v1/databases/${db.id}?purge=true`).catch((e) => {
+      if (!(e instanceof HttpError && e.status === 404)) throw e;
+    });
+  }
   await deleteDns(env, db.dns_record_id);
   await env.DB.prepare("DELETE FROM databases WHERE id = ?").bind(db.id).run();
   return json({ deleted: db.id });
@@ -299,6 +297,13 @@ async function deleteDatabase(env: Env, c: Caller, id: string): Promise<Response
 async function resetPassword(env: Env, c: Caller, id: string): Promise<Response> {
   const db = await loadDb(env, c, id);
   const password = newPassword();
+  if (db.engine === "function") {
+    // The proxy checks passwords for a function; a new verifier is the whole change.
+    await env.DB.prepare("UPDATE databases SET password_enc = ?, auth_verifier = ? WHERE id = ?")
+      .bind(await sealPassword(env.PASSWORD_KEY, password), await verifierFor(password), db.id)
+      .run();
+    return json({ password, connection_uri: connectionUri(env, db, password) });
+  }
   await agent(await loadBox(env, db.box_id), "POST", `/v1/databases/${db.id}/password`, { password });
   await env.DB.prepare("UPDATE databases SET password_enc = ? WHERE id = ?")
     .bind(await sealPassword(env.PASSWORD_KEY, password), db.id)
@@ -306,11 +311,78 @@ async function resetPassword(env: Env, c: Caller, id: string): Promise<Response>
   return json({ password, connection_uri: connectionUri(env, db, password) });
 }
 
+/** The operator moves a database between engines by hand. The loop does the
+ *  same on its own; this is for testing it, and for the odd exception. */
+async function setTier(req: Request, env: Env, id: string): Promise<Response> {
+  const b = await body<{ engine?: string }>(req);
+  const db = await loadDb(env, { kind: "admin" }, id);
+  const t0 = Date.now();
+  if (b.engine === "box") {
+    const box = await promote(env, db, "by hand");
+    return json({ moved: db.id, engine: "box", box_id: box.id, ms: Date.now() - t0 });
+  }
+  if (b.engine === "function") {
+    await demote(env, db, "by hand");
+    return json({ moved: db.id, engine: "function", ms: Date.now() - t0 });
+  }
+  throw new HttpError(400, "engine must be 'box' or 'function'");
+}
+
+/** What a box's proxy asks when a client arrives for an id that is not a
+ *  cluster on its disk. For a function: enough to check the password and
+ *  open the relay. For a box database: just the fact, so the proxy can say
+ *  it is moving rather than missing. */
+async function routeFor(req: Request, env: Env, boxId: string, id: string): Promise<Response> {
+  const box = await loadBox(env, boxId);
+  if (!timingSafeEqual(bearer(req), box.agent_token)) throw new HttpError(401, "invalid agent token");
+  const db = await env.DB.prepare("SELECT * FROM databases WHERE id = ?").bind(id).first<DbRow>();
+  if (!db) throw new HttpError(404, "no such database");
+  if (db.engine !== "function") return json({ engine: db.engine, box_id: db.box_id });
+  if (!liteEnabled(env)) throw new HttpError(503, "the function engine is not configured");
+  return json({
+    engine: "function",
+    role: db.role,
+    database: db.dbname,
+    verifier: db.auth_verifier,
+    relay: { url: wireUrl(env, db.id), token: env.LITE_TOKEN },
+  });
+}
+
+/** A function reporting on itself: what it did since its last beat. The
+ *  answer tells it whether it still exists here and which engine the row
+ *  says it is, so a stale object can stop. */
+async function functionBeat(req: Request, env: Env): Promise<Response> {
+  if (!env.LITE_TOKEN || !timingSafeEqual(bearer(req), env.LITE_TOKEN)) throw new HttpError(401, "invalid token");
+  const b = await body<{
+    id?: string; queries?: number; sessions?: number; open_sessions?: number;
+    blocks_written?: number; active_ms?: number; storage_bytes?: number | null;
+  }>(req);
+  if (!b.id) throw new HttpError(400, "id is required");
+  const db = await env.DB.prepare("SELECT id, engine FROM databases WHERE id = ?").bind(b.id).first<{ id: string; engine: string }>();
+  if (!db) return json({ exists: false });
+  if (db.engine !== "function") return json({ exists: true, engine: db.engine });
+  const at = now();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO metrics (db_id, at, running, connections, queries, blocks_written, storage_bytes, active_ms)
+       VALUES (?, ?, 1, ?, ?, ?, ?, ?)`,
+    ).bind(db.id, at, b.open_sessions ?? 0, b.queries ?? 0, b.blocks_written ?? 0, b.storage_bytes ?? null, b.active_ms ?? 0),
+    env.DB.prepare("UPDATE databases SET running = 1, connections = ?, status = 'ready' WHERE id = ?").bind(b.open_sessions ?? 0, db.id),
+  ]);
+  return json({ exists: true, engine: "function" });
+}
+
+async function adminMoves(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare("SELECT * FROM moves ORDER BY id DESC LIMIT 50").all();
+  return json(results);
+}
+
 /** Move a database to another box (admin). With `force`, the source box is
  *  assumed dead: the database is rebuilt from R2 without asking it. */
 async function moveDatabase(req: Request, env: Env, id: string): Promise<Response> {
   const b = await body<{ box_id?: string; force?: boolean }>(req);
   const db = await loadDb(env, { kind: "admin" }, id);
+  if (db.engine !== "box") throw new HttpError(409, "a function has no box to move from; change its tier instead");
   const source = await loadBox(env, db.box_id);
   const target = b.box_id ? await loadBox(env, b.box_id) : await pickBox(env);
   if (target.id === source.id) throw new HttpError(400, "database is already on that box");
@@ -643,6 +715,7 @@ async function adminStats(env: Env): Promise<Response> {
               sum(CASE WHEN running = 1 THEN 1 ELSE 0 END) AS awake,
               sum(CASE WHEN location = 'cold' THEN 1 ELSE 0 END) AS cold,
               sum(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+              sum(CASE WHEN engine = 'function' THEN 1 ELSE 0 END) AS light,
               sum(connections) AS connections
          FROM databases`).first<Record<string, number>>(),
     env.DB.prepare("SELECT count(*) AS total, sum(databases_awake) AS awake FROM boxes").first<Record<string, number>>(),
@@ -653,7 +726,7 @@ async function adminStats(env: Env): Promise<Response> {
     users: { total: users?.total ?? 0, admins: users?.admins ?? 0 },
     databases: {
       total: dbs?.total ?? 0, awake: dbs?.awake ?? 0, cold: dbs?.cold ?? 0,
-      failed: dbs?.failed ?? 0, connections: dbs?.connections ?? 0,
+      failed: dbs?.failed ?? 0, light: dbs?.light ?? 0, connections: dbs?.connections ?? 0,
     },
     boxes: { total: boxes?.total ?? 0, databases_awake: boxes?.awake ?? 0 },
     signups: signups.results,
@@ -705,12 +778,19 @@ async function route(req: Request, env: Env): Promise<Response> {
     if (id === "stats" && m === "GET") return adminStats(env);
     if (id === "users" && m === "GET") return adminUsers(env);
     if (id === "users" && action && m === "PATCH") return adminSetQuota(req, env, action);
+    if (id === "moves" && m === "GET") return adminMoves(env);
+    throw new HttpError(404, "not found");
+  }
+
+  if (resource === "functions") {
+    if (id === "beat" && m === "POST") return functionBeat(req, env);
     throw new HttpError(404, "not found");
   }
 
   if (resource === "boxes") {
     if (id === "join" && m === "POST") return joinBox(req, env);
     if (id && action === "heartbeat" && m === "POST") return heartbeat(req, env, id);
+    if (id && action === "route" && parts[4] && m === "GET") return routeFor(req, env, id, parts[4]);
     await admin(req, env);
     if (!id && m === "GET") {
       const { results } = await env.DB.prepare("SELECT * FROM boxes ORDER BY created_at").all<Box>();
@@ -757,7 +837,7 @@ async function route(req: Request, env: Env): Promise<Response> {
       let extra: Record<string, unknown> = {};
       try {
         const live = await refresh(env, db);
-        extra = { error: live.error, last_snapshot_at: live.last_snapshot_at };
+        extra = { error: live.error ?? null, last_snapshot_at: live.last_snapshot_at ?? null };
       } catch {
         extra = { box_reachable: false };
       }
@@ -768,17 +848,24 @@ async function route(req: Request, env: Env): Promise<Response> {
     if (id && action === "reset-password" && m === "POST") return resetPassword(env, c, id);
     if (id && action === "suspend" && m === "POST") {
       const db = await loadDb(env, c, id);
+      if (db.engine === "function") {
+        const r = await lite<{ closed: boolean }>(env, "POST", `/db/${db.id}/reset`);
+        await env.DB.prepare("UPDATE databases SET running = 0, connections = 0 WHERE id = ?").bind(db.id).run();
+        return json({ suspended: r.closed });
+      }
       return json(await agent(await loadBox(env, db.box_id), "POST", `/v1/databases/${db.id}/suspend?force=true`));
     }
     // SQL on behalf of the owner. The agent runs it as the database's own
     // role, so this grants nothing the owner does not already have.
     if (id && action === "dump" && m === "GET") {
       const db = await loadDb(env, c, id);
-      const box = await loadBox(env, db.box_id);
-      const res = await fetch(`${box.api_url}/v1/databases/${db.id}/dump`, {
-        headers: { authorization: `Bearer ${box.agent_token}` },
-      });
-      if (!res.ok) throw new HttpError(502, `box ${box.id}: ${await res.text()}`);
+      const res = db.engine === "function"
+        ? await liteFetch(env, `/db/${db.id}/dump`)
+        : await (async () => {
+            const box = await loadBox(env, db.box_id);
+            return fetch(`${box.api_url}/v1/databases/${db.id}/dump`, { headers: { authorization: `Bearer ${box.agent_token}` } });
+          })();
+      if (!res.ok) throw new HttpError(502, `export failed: ${await res.text()}`);
       // Streamed straight through; nothing is buffered in the Worker.
       return new Response(res.body, {
         headers: {
@@ -793,6 +880,7 @@ async function route(req: Request, env: Env): Promise<Response> {
       const b = await body<{ sql?: string; limit?: number }>(req);
       if (typeof b.sql !== "string" || !b.sql.trim()) throw new HttpError(400, "sql is required");
       if (b.sql.length > 100_000) throw new HttpError(413, "query too long");
+      if (db.engine === "function") return json(await functionQuery(env, db, b.sql, b.limit));
       return json(
         await agent(await loadBox(env, db.box_id), "POST", `/v1/databases/${db.id}/query`, {
           sql: b.sql,
@@ -831,6 +919,9 @@ async function route(req: Request, env: Env): Promise<Response> {
 
     if (id && action === "restore-points" && m === "GET") {
       const db = await loadDb(env, c, id);
+      if (db.engine === "function") {
+        return json({ earliest: null, snapshots: [], note: "Restore points begin once this database has some history." });
+      }
       const snaps = await agent<{ taken_at: string; kind: string }[]>(
         await loadBox(env, db.box_id), "GET", `/v1/databases/${db.id}/snapshots`);
       return json({
@@ -843,8 +934,29 @@ async function route(req: Request, env: Env): Promise<Response> {
       await admin(req, env);
       return moveDatabase(req, env, id);
     }
+    if (id && action === "tier" && m === "POST") {
+      await admin(req, env);
+      return setTier(req, env, id);
+    }
   }
   throw new HttpError(404, "not found");
+}
+
+/** The console's SQL door for a function, in the same shape the agent gives:
+ *  columns, rows of text, a cap. */
+async function functionQuery(env: Env, db: DbRow, sql: string, limit?: number) {
+  const cap = Math.min(Math.max(limit ?? 200, 1), 1000);
+  const r = await lite<{ rows: Record<string, unknown>[]; fields: string[]; affected: number; ms: number }>(
+    env, "POST", `/db/${db.id}/query`, { sql },
+  );
+  const text = (v: unknown) => (v === null || v === undefined ? null : typeof v === "object" ? JSON.stringify(v) : String(v));
+  return {
+    columns: r.fields,
+    rows: r.rows.slice(0, cap).map((row) => r.fields.map((f) => text(row[f]))),
+    truncated: r.rows.length > cap,
+    rows_affected: r.affected,
+    ms: r.ms,
+  };
 }
 
 export default {
@@ -858,13 +970,15 @@ export default {
     }
   },
 
-  // Mark boxes that stopped sending heartbeats as offline.
-  async scheduled(_: ScheduledController, env: Env): Promise<void> {
+  // Mark boxes that stopped sending heartbeats as offline, and run the loop
+  // that moves databases between engines.
+  async scheduled(_: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const cutoff = new Date(Date.now() - 2 * 60_000).toISOString();
     await env.DB.prepare("UPDATE boxes SET status = 'offline' WHERE status = 'active' AND last_seen < ?").bind(cutoff).run();
     // History is for graphs, not for keeping: drop anything past the window.
     await env.DB.prepare("DELETE FROM metrics WHERE at < ?")
       .bind(new Date(Date.now() - METRIC_DAYS * 86_400_000).toISOString())
       .run();
+    ctx.waitUntil(tierPass(env).catch((e) => console.error("tier pass failed", e)));
   },
 } satisfies ExportedHandler<Env>;

@@ -6,6 +6,7 @@ mod lsn;
 mod pg;
 mod pooler;
 mod proxy;
+mod relay;
 mod stats;
 mod storage;
 mod tasks;

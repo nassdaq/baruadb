@@ -296,6 +296,58 @@ export function RowMenu({ items }: { items: { label: string; onClick: () => void
 
 // ---------------------------------------------------------------- modal
 
+/** Flags for the regions we run in; a globe for anything else or "automatic". */
+const REGION_FLAG: Record<string, string> = { auto: "🌐", eu: "🇳🇱", tz: "🇹🇿", default: "🌐" };
+export const regionFlag = (zone?: string | null) => (zone && REGION_FLAG[zone]) || "🌐";
+
+/** A region chooser, the way every cloud has one: a globe, a flag, a name.
+ *  `value` is a zone slug or "auto". */
+export function RegionSelect({
+  value,
+  onChange,
+  zones,
+  includeAuto = true,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (zone: string) => void;
+  zones: { zone: string; label: string; boxes?: number }[];
+  includeAuto?: boolean;
+  disabled?: boolean;
+}) {
+  const opts = [...(includeAuto ? [{ zone: "auto", label: "Automatic", boxes: 0 }] : []), ...zones];
+  const cur = opts.find((o) => o.zone === value) ?? opts[0];
+  return (
+    <Listbox value={value} onChange={onChange} disabled={disabled}>
+      <ListboxButton className="flex w-full items-center gap-2.5 rounded-md border border-line bg-base px-3 py-2 text-[13px] text-text data-focus:border-edge data-focus:outline-none disabled:opacity-60">
+        <span className="text-[15px] leading-none">{regionFlag(cur?.zone)}</span>
+        <span className="truncate">{cur?.label ?? "Automatic"}</span>
+        <ChevronDownIcon className="ml-auto size-4 text-faint" />
+      </ListboxButton>
+      <ListboxOptions
+        anchor="bottom start"
+        transition
+        className="z-50 mt-1 w-[var(--button-width)] origin-top rounded-lg border border-line bg-panel p-1 text-[13px] shadow-panel transition duration-100 ease-out focus:outline-none data-closed:scale-95 data-closed:opacity-0"
+      >
+        {opts.map((o) => (
+          <ListboxOption
+            key={o.zone}
+            value={o.zone}
+            className="group flex cursor-pointer items-center gap-2.5 rounded px-2.5 py-1.5 text-dim data-focus:bg-raise data-focus:text-text"
+          >
+            <span className="text-[15px] leading-none">{regionFlag(o.zone)}</span>
+            <span className="truncate">{o.label}</span>
+            {o.zone === "auto" ? (
+              <span className="ml-auto text-[11px] text-faint group-data-selected:hidden">closest available</span>
+            ) : null}
+            <CheckIcon className="ml-auto size-4 shrink-0 text-accent opacity-0 group-data-selected:opacity-100" />
+          </ListboxOption>
+        ))}
+      </ListboxOptions>
+    </Listbox>
+  );
+}
+
 export function Modal({
   open,
   onClose,

@@ -51,7 +51,13 @@ export type Database = {
   created_at: string;
   connection_uri: string;
   pooled_uri: string;
+  /** The region it is pinned to (null = automatic) and a label for it. */
+  zone?: string | null;
+  region?: string;
 };
+
+/** A region a database can live in: wherever a box is online. */
+export type Zone = { zone: string; label: string; boxes: number };
 
 export type QueryResult = {
   columns: string[];
@@ -142,9 +148,15 @@ export const api = {
   signOut: () => post<{ ok: true }>("/auth/logout"),
 
   databases: () => call<Database[]>("/databases"),
+  zones: () => call<{ zones: Zone[] }>("/zones"),
   database: (id: string) => call<Database & { error?: string | null }>(`/databases/${id}`),
-  createDatabase: (name: string) =>
-    post<{ database: Database; password: string; connection_uri: string }>("/databases", { name }),
+  createDatabase: (name: string, zone?: string) =>
+    post<{ database: Database; password: string; connection_uri: string }>("/databases", {
+      name,
+      ...(zone && zone !== "auto" ? { zone } : {}),
+    }),
+  setZone: (id: string, zone: string) =>
+    post<{ id: string; zone: string | null; region: string; moved: boolean; note: string }>(`/databases/${id}/zone`, { zone }),
   deleteDatabase: (id: string) => call<{ deleted: string }>(`/databases/${id}`, { method: "DELETE" }),
   branch: (id: string, name: string, point_in_time?: string) =>
     post<{ database: Database }>(`/databases/${id}/branches`, { name, point_in_time }),

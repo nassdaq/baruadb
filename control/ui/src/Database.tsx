@@ -1,6 +1,6 @@
 import { Input, Textarea } from "@headlessui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiError, BRANCHES_PER_DB, CATALOG, ident, literal, type Database, type QueryResult } from "./api";
+import { api, ApiError, BRANCHES_PER_DB, CATALOG, ident, literal, type Database, type QueryResult, type Zone } from "./api";
 import { ArrowPathIcon, PlusIcon } from "@heroicons/react/20/solid";
 import {
   ArrowUturnLeftIcon,
@@ -26,6 +26,8 @@ import {
   Dot,
   ErrorNote,
   Modal,
+  RegionSelect,
+  regionFlag,
   TableSkeleton,
   SearchBox,
   Select,
@@ -145,7 +147,7 @@ export function DatabaseView({
   if (section === "sql") return <SqlEditor db={db} />;
   return (
     <div className="mx-auto max-w-[1100px] px-8 py-7">
-      {section === "overview" && <Overview db={db} />}
+      {section === "overview" && <Overview db={db} reload={reload} />}
       {section === "branches" && <Branches db={db} reload={reload} onOpen={onBack} />}
       {section === "backups" && <Backups db={db} />}
       {section === "roles" && <Roles db={db} />}
@@ -155,8 +157,20 @@ export function DatabaseView({
 
 // ---------------------------------------------------------------- overview
 
-function Overview({ db }: { db: Database }) {
+function Overview({ db, reload }: { db: Database; reload: () => void }) {
   const [size, setSize] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [target, setTarget] = useState(db.zone ?? "auto");
+  const [moving, setMoving] = useState(false);
+  const [moveErr, setMoveErr] = useState("");
+  useEffect(() => { if (picking) api.zones().then((r) => setZones(r.zones)).catch(() => setZones([])); }, [picking]);
+  const move = async () => {
+    setMoving(true); setMoveErr("");
+    try { await api.setZone(db.id, target); setPicking(false); reload(); }
+    catch (e) { setMoveErr(String((e as Error).message ?? e)); }
+    finally { setMoving(false); }
+  };
 
   useEffect(() => {
     // Only ask a database that is already up: waking one just to print a
@@ -175,7 +189,9 @@ function Overview({ db }: { db: Database }) {
         subtitle={
           <span className="inline-flex items-center gap-2">
             <Dot state={db.status === "ready" ? db.state : db.status} />
-            {db.status === "ready" ? db.state : db.status} · Europe (Amsterdam) · Postgres 16
+            {db.status === "ready" ? db.state : db.status}
+            {" · "}
+            <span className="inline-flex items-center gap-1">{regionFlag(db.zone)} {db.region ?? "Automatic"}</span>
           </span>
         }
       />
@@ -189,8 +205,38 @@ function Overview({ db }: { db: Database }) {
       </Card>
 
       <Card className="mb-4 p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-[12px] text-dim">Region</div>
+            <div className="mt-1 flex items-center gap-2 text-[15px]">
+              <span>{regionFlag(db.zone)}</span>
+              {db.region ?? "Automatic"}
+            </div>
+          </div>
+          {!db.parent_id && (
+            <Button onClick={() => { setTarget(db.zone ?? "auto"); setPicking(true); }}>Change region</Button>
+          )}
+        </div>
+      </Card>
+
+      <Card className="mb-4 p-5">
         <ConnectPanel db={db} />
       </Card>
+
+      <Modal open={picking} onClose={() => setPicking(false)} title="Move to another region">
+        {moveErr && <ErrorNote>{moveErr}</ErrorNote>}
+        <p className="mb-3 text-[13px] text-dim">
+          Your connection string stays the same. The database is copied to the new region; during the switch it
+          briefly says “moving, try again”, then settles there.
+        </p>
+        <RegionSelect value={target} onChange={setTarget} zones={zones} />
+        <div className="mt-4 flex gap-2">
+          <Button variant="accent" disabled={moving || target === (db.zone ?? "auto")} onClick={move}>
+            {moving ? "Moving…" : "Move"}
+          </Button>
+          <Button onClick={() => setPicking(false)}>Cancel</Button>
+        </div>
+      </Modal>
     </>
   );
 }

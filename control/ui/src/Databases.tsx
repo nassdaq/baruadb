@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, ApiError, BRANCHES_PER_DB, type Database, type Me } from "./api";
+import { api, ApiError, BRANCHES_PER_DB, type Database, type Me, type Zone } from "./api";
 import {
   ago,
   Badge,
@@ -13,6 +13,8 @@ import {
   ErrorNote,
   Ask,
   Modal,
+  RegionSelect,
+  regionFlag,
   RowMenu,
   SearchBox,
   Stat,
@@ -162,7 +164,12 @@ export function Databases({ me, onOpen }: { me: Me; onOpen: (id: string) => void
                       {d.parent_id ? <Badge>Branch</Badge> : <Badge tone="accent">Primary</Badge>}
                     </button>
                   </td>
-                  <td className="px-4 py-2.5 text-dim">Europe (Amsterdam)</td>
+                  <td className="px-4 py-2.5 text-dim">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>{regionFlag(d.zone)}</span>
+                      {d.region ?? "Automatic"}
+                    </span>
+                  </td>
                   <td className="px-4 py-2.5 text-dim">{ago(d.created_at)}</td>
                   <td className="px-4 py-2.5">
                     <span className="inline-flex items-center gap-2 text-dim">
@@ -309,16 +316,23 @@ function CreateDialog({
   onCreated: (uri: string, name: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [zone, setZone] = useState("auto");
+  const [zones, setZones] = useState<Zone[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) api.zones().then((r) => setZones(r.zones)).catch(() => setZones([]));
+  }, [open]);
 
   const create = async () => {
     setBusy(true);
     setError("");
     try {
-      const r = await api.createDatabase(name || "main");
+      const r = await api.createDatabase(name || "main", zone);
       onCreated(r.connection_uri, r.database.name);
       setName("");
+      setZone("auto");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
@@ -336,8 +350,14 @@ function CreateDialog({
         }}
       >
         <TextField label="Name" value={name} onChange={setName} placeholder="shop" autoFocus />
-        <div className="mb-4 rounded-md border border-line bg-base px-3 py-2.5 text-xs text-dim">
-          Postgres 16 · Europe (Amsterdam) · sleeps after 5 idle minutes
+        <div className="mb-4">
+          <div className="mb-1.5 text-[12px] text-dim">Region</div>
+          <RegionSelect value={zone} onChange={setZone} zones={zones} />
+          <p className="mt-1.5 text-xs text-faint">
+            {zone === "auto"
+              ? "Barua places it for you — it costs nothing while idle, and earns a home on metal when it needs one."
+              : "A database on metal in this region, close to you."}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button type="submit" variant="accent" disabled={busy}>

@@ -93,6 +93,17 @@ psql "postgresql://app:…@br-k3j9x2m1qa.pg.barua.app/app?sslmode=require"
 psql "postgresql://app:…@br-k3j9x2m1qa-pooler.pg.barua.app/app?sslmode=require"
 ```
 
+## Two engines
+
+A database is born on the **function engine** (`lite/`): Postgres 18 compiled to WebAssembly inside a Cloudflare Durable Object, with its data directory in the object's own storage. It exists only while a query runs, so it costs nothing idle. It earns a **box** - a Postgres 16 cluster on a Linode box with its history in R2 - when its own numbers say so, and can go back down when it falls quiet. Nothing a customer holds changes: `<id>.pg.barua.app`, role, database and password all stay.
+
+- **Routing.** The box's proxy serves the clusters on its disk and relays the rest. For an id it does not have it asks `GET /v1/boxes/{box}/route/{id}`, checks the password against a salted SHA-256 verifier (cleartext auth, only ever inside TLS) and carries the wire protocol over a WebSocket to the database's object (`agent/src/relay.rs`).
+- **Moves** (`control/src/tier.ts`). A logical copy: pg_dump played back by psql on the way up, pg_dump streamed into the object's `restore` on the way down. Both copies are frozen while it runs and row counts are compared table by table before the source is let go. `POST /v1/databases/{id}/tier {"engine":"box"|"function"}` (admin) moves one by hand; the cron runs the loop every 30 minutes: up when a function would cost more than ~$2/month (rows written, time awake) or passes 64 MB, down after 14 quiet days under 160 MB with no branches and no extensions. Every move lands in `moves` and on the admin page.
+- **Branches** and point-in-time restore need history, which only a box keeps: branching a function moves it up first.
+- **What the light tier does not do.** One session at a time (clients queue; session settings are reset between them), no extensions beyond plpgsql, and a relay session idle for 15 minutes is closed - the object is billed while a socket is open.
+
+Secrets: `LITE_TOKEN` on both Workers (the same value). Vars: `LITE_URL` and `NEW_DB_ENGINE` (`function`; `box` turns the light tier off for new databases) on the control plane, `CONTROL_URL` on the function engine.
+
 ## API
 
 All calls take `Authorization: Bearer <api key>` (or the admin token).

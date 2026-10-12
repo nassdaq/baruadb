@@ -9,3 +9,4 @@ src/pglite/pglite.data
 .dev.vars
 src/pglite/pg_dump.wasm
 src/pglite/pg_dump.wasm.orig
+src/pglite/plpgsql.wasm

@@ -40,6 +40,11 @@ const WRAPPERS: Record<string, WebAssembly.Module> = { pi: fnPi, ppp: fnPpp, iii
   const sig = (fnManifest as Record<string, string>)[Array.from(bytes).join(",")];
   return sig ? WRAPPERS[sig] : undefined;
 };
+// plpgsql is a loadable library: Postgres dlopens it on first use and
+// Emscripten would compile it then. Precompiled here, handed over by name.
+import plpgsqlWasm from "./pglite/plpgsql.wasm";
+(globalThis as { __wasmDylib?: (name: string, bytes: unknown) => WebAssembly.Module | undefined }).__wasmDylib = (name) =>
+  name.endsWith("/plpgsql.so") ? plpgsqlWasm : undefined;
 import { PGlite } from "@electric-sql/pglite";
 import pgliteWasm from "./pglite/pglite.wasm";
 import initdbWasm from "./pglite/initdb.wasm";

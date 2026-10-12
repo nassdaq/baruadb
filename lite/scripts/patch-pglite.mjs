@@ -6,7 +6,7 @@
 //     Workers refuse runtime compilation. The same modules are prebuilt
 //     (scripts/make-fn-wrappers.mjs) and a hook hands them over, keyed by
 //     the wrapper's own bytes so minified variable names do not matter.
-// Runs on every install.
+// Runs on every install; each change is skipped when it is already there.
 import { readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 const roots = ["node_modules/@electric-sql/pglite/dist", "node_modules/@electric-sql/pglite-tools/dist"];
@@ -16,16 +16,30 @@ for (const f of roots.flatMap(walk)) {
   const src = readFileSync(f, "utf8");
   let out = src.replaceAll("import.meta.url", '"https://pglite.invalid/dist/index.js"');
   urls += (src.match(/import\.meta\.url/g) ?? []).length;
-  out = out.replace(/new WebAssembly\.Module\(new Uint8Array\((\w+)\)\)/g, (m, v) => {
-    hooks++;
-    return `((globalThis.__wasmFnModule&&globalThis.__wasmFnModule(${v}))||${m})`;
-  });
+  if (!out.includes("__wasmFnModule")) {
+    out = out.replace(/new WebAssembly\.Module\(new Uint8Array\((\w+)\)\)/g, (m, v) => {
+      hooks++;
+      return `((globalThis.__wasmFnModule&&globalThis.__wasmFnModule(${v}))||${m})`;
+    });
+  }
   // pg_dump's glue fetches its wasm by URL and pgDump() takes no module
   // option: when a precompiled module is on the global, instantiate that.
-  out = out.replace(/async function instantiateAsync\((\w+),(\w+),(\w+)\)\{/g, (m, a, b, c) => {
-    loaders++;
-    return `${m}if(globalThis.__pgDumpWasm){var __i=await WebAssembly.instantiate(globalThis.__pgDumpWasm,${c});return{instance:__i,module:globalThis.__pgDumpWasm}}`;
-  });
+  if (!out.includes("__pgDumpWasm")) {
+    out = out.replace(/async function instantiateAsync\((\w+),(\w+),(\w+)\)\{/g, (m, a, b, c) => {
+      loaders++;
+      return `${m}if(globalThis.__pgDumpWasm){var __i=await WebAssembly.instantiate(globalThis.__pgDumpWasm,${c});return{instance:__i,module:globalThis.__pgDumpWasm}}`;
+    });
+  }
+  // dlopen: Postgres loads plpgsql (and any extension) as a side module,
+  // which the loader compiles from the bytes it read out of the file
+  // package. The same hook idea: a precompiled module for that library name
+  // is used instead when one is on the global.
+  if (!out.includes("__wasmDylib")) {
+    out = out.replace(/new WebAssembly\.Module\(binary\)/g, (m) => {
+      loaders++;
+      return `((globalThis.__wasmDylib&&globalThis.__wasmDylib(libName,binary))||${m})`;
+    });
+  }
   // The Node branch imports "module" for createRequire; the bundler tries to
   // resolve it even though a Worker never takes that branch.
   out = out.replaceAll('await import("module")', '({createRequire:()=>()=>{throw new Error("no require in a Worker")}})');

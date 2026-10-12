@@ -154,6 +154,16 @@ export class Database extends DurableObject<Env> {
     return { ...base, heapBytes: mod.HEAP8.byteLength, logicalBytes: pgdataBytes, files };
   }
 
+  /** The whole data directory as a tar.gz, consistent as of a checkpoint.
+   *  This is the physical form: it restores onto another function engine
+   *  (same wasm32 layout). A Linode box needs the logical form instead. */
+  async exportTar(): Promise<ArrayBuffer> {
+    const pg = await this.#db();
+    await pg.exec("checkpoint");
+    const blob = await this.#fs!.dumpTar();
+    return blob.arrayBuffer();
+  }
+
   /** Forget the running engine: what eviction does, on demand. The data
    *  directory is in storage, so there is nothing to save first. */
   async reset(): Promise<{ closed: boolean }> {
@@ -209,6 +219,10 @@ export default {
         return json(await stub.query(b.sql, b.params ?? []));
       }
       if (action === "stats") return json(await stub.stats());
+      if (action === "export" && request.method === "GET") {
+        const buf = await stub.exportTar();
+        return new Response(buf, { headers: { "content-type": "application/gzip", "content-disposition": `attachment; filename="${name}.tar.gz"`, "content-length": String(buf.byteLength) } });
+      }
       if (action === "reset" && request.method === "POST") return json(await stub.reset());
     } catch (e) {
       const err = e as Error;

@@ -294,8 +294,49 @@ export class BlockFS extends BaseFilesystem {
       this.close(fd);
     }
   }
+  /** The data directory as a gzipped ustar tarball, read from storage. The
+   *  caller runs a CHECKPOINT first so the files are a consistent set. Paths
+   *  are relative to the directory, the way PGlite's own dump writes them,
+   *  so loadDataDir on another engine accepts it. */
   async dumpTar(): Promise<Blob> {
-    throw new Error("dumpTar: export from storage is not implemented yet");
+    const enc = new TextEncoder();
+    const parts: Uint8Array[] = [];
+    const header = (name: string, size: number, mode: number, mtime: number, type: "0" | "5") => {
+      const h = new Uint8Array(512);
+      const put = (at: number, len: number, v: string) => h.set(enc.encode(v).subarray(0, len), at);
+      // ustar splits long names into prefix/name at a slash.
+      let base = name, prefix = "";
+      if (enc.encode(name).length > 100) { const i = name.lastIndexOf("/", 155); if (i > 0) { prefix = name.slice(0, i); base = name.slice(i + 1); } }
+      put(0, 100, base);
+      put(100, 8, (mode & 0o7777).toString(8).padStart(7, "0") + "\0");
+      put(108, 8, "0000000\0"); put(116, 8, "0000000\0");
+      put(124, 12, size.toString(8).padStart(11, "0") + "\0");
+      put(136, 12, Math.floor(mtime / 1000).toString(8).padStart(11, "0") + "\0");
+      h.fill(0x20, 148, 156); // checksum computed over spaces
+      h[156] = type.charCodeAt(0);
+      put(257, 6, "ustar\0"); put(263, 2, "00");
+      put(265, 32, "postgres"); put(297, 32, "postgres");
+      put(345, 155, prefix);
+      let sum = 0; for (const b of h) sum += b;
+      put(148, 8, sum.toString(8).padStart(6, "0") + "\0 ");
+      return h;
+    };
+    const paths = [...this.#nodes.keys()].filter((p) => p !== "").sort();
+    for (const p of paths) {
+      const n = this.#nodes.get(p)!;
+      const rel = p.slice(1) + (n.dir ? "/" : "");
+      parts.push(header(rel, n.dir ? 0 : n.size, n.mode, n.mtime, n.dir ? "5" : "0"));
+      if (n.dir || n.size === 0) continue;
+      const body = new Uint8Array(Math.ceil(n.size / 512) * 512);
+      for (let idx = 0; idx * BLOCK < n.size; idx++) {
+        const take = Math.min(BLOCK, n.size - idx * BLOCK);
+        body.set(this.#block(p, idx).subarray(0, take), idx * BLOCK);
+      }
+      parts.push(body);
+    }
+    parts.push(new Uint8Array(1024)); // end of archive
+    const tar = new Blob(parts);
+    return new Response(tar.stream().pipeThrough(new CompressionStream("gzip"))).blob();
   }
 
   /** For /stats: what is in storage and how the cache is doing. */

@@ -12,6 +12,7 @@
 import net from "node:net";
 
 const LITE_URL = process.env.LITE_URL ?? "wss://barua-lite.kelvineffect.workers.dev";
+const LITE_TOKEN = process.env.LITE_TOKEN ?? "";
 const PORT = Number(process.env.PORT ?? 15432);
 const SSL_REQUEST = 80877103, GSSENC_REQUEST = 80877104, CANCEL_REQUEST = 80877102;
 
@@ -42,7 +43,7 @@ net.createServer((sock) => {
         const db = databaseOf(msg);
         if (!db || !/^[a-z][a-z0-9-]{0,40}$/.test(db)) { sock.end(); return; }
         started = true;
-        ws = new WebSocket(`${LITE_URL}/wire/${db}`);
+        ws = new WebSocket(`${LITE_URL}/wire/${db}?token=${encodeURIComponent(LITE_TOKEN)}`);
         ws.binaryType = "arraybuffer";
         ws.onopen = () => { for (const f of pending) ws.send(f); pending = []; };
         ws.onmessage = (ev) => { if (sock.writable) sock.write(Buffer.from(ev.data)); };

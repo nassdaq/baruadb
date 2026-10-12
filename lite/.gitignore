@@ -6,3 +6,4 @@ src/pglite/pglite.wasm
 src/pglite/pglite.wasm.orig
 src/pglite/initdb.wasm
 src/pglite/pglite.data
+.dev.vars

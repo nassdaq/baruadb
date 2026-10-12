@@ -43,6 +43,19 @@ import { BlockFS } from "./blockfs";
 export interface Env {
   DATABASE: DurableObjectNamespace<Database>;
   HOME: R2Bucket;
+  /** One shared secret for now; the control plane will issue per-database credentials later. */
+  LITE_TOKEN?: string;
+}
+
+/** Bearer header for the JSON door; ?token= for the WebSocket door, which
+ *  cannot carry headers from a browser-style client. Constant-time compare. */
+function allowed(request: Request, url: URL, env: Env): boolean {
+  if (!env.LITE_TOKEN) return false; // no secret set: closed, not open
+  const given = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? "";
+  if (given.length !== env.LITE_TOKEN.length) return false;
+  let diff = 0;
+  for (let i = 0; i < given.length; i++) diff |= given.charCodeAt(i) ^ env.LITE_TOKEN.charCodeAt(i);
+  return diff === 0;
 }
 
 
@@ -111,7 +124,11 @@ export class Database extends DurableObject<Env> {
   async query(sql: string, params: unknown[] = []): Promise<unknown> {
     const pg = await this.#db();
     const t0 = Date.now();
-    const r = await pg.query(sql, params);
+    // With parameters: one prepared statement. Without: a script, any number
+    // of statements, the last one's result comes back.
+    let r: { rows: unknown[]; fields: { name: string }[]; affectedRows?: number };
+    if (params.length) r = await pg.query(sql, params);
+    else { const all = await pg.exec(sql); r = all[all.length - 1] ?? { rows: [], fields: [] }; }
     this.#stats.queries++;
     return { rows: r.rows, fields: r.fields.map((f) => f.name), affected: r.affectedRows ?? 0, ms: Date.now() - t0 };
   }
@@ -177,6 +194,7 @@ const json = (data: unknown, status = 200) =>
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (!allowed(request, url, env)) return json({ error: "a token is required" }, 401);
     const [, door, name, action] = url.pathname.split("/");
     if (!name || !/^[a-z][a-z0-9-]{0,40}$/.test(name)) return json({ error: "give a database name: /db/<name>/query or /wire/<name>" }, 400);
     const stub = env.DATABASE.getByName(name);

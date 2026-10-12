@@ -39,6 +39,12 @@ import pgliteData from "./pglite/pglite.data";
 // initdb - which needs to run a child process - never runs in the Worker.
 import golden from "./pglite/golden.tar.gz";
 import { BlockFS } from "./blockfs";
+import { pgDump } from "@electric-sql/pglite-tools/pg_dump";
+import pgDumpWasm from "./pglite/pg_dump.wasm";
+// pg_dump compiled to WebAssembly, handed its module the same way (see
+// scripts/patch-pglite.mjs): the logical form of a database, plain SQL,
+// which is what moves to a Linode box or anywhere else Postgres runs.
+(globalThis as { __pgDumpWasm?: WebAssembly.Module }).__pgDumpWasm = pgDumpWasm;
 
 export interface Env {
   DATABASE: DurableObjectNamespace<Database>;
@@ -164,6 +170,14 @@ export class Database extends DurableObject<Env> {
     return blob.arrayBuffer();
   }
 
+  /** The database as plain SQL - schema and INSERTs - via pg_dump. This is
+   *  the form that restores on any Postgres, including a Linode box. */
+  async dumpSql(): Promise<string> {
+    const pg = await this.#db();
+    const file = await pgDump({ pg, args: ["--no-owner", "--no-privileges"] });
+    return file.text();
+  }
+
   /** Forget the running engine: what eviction does, on demand. The data
    *  directory is in storage, so there is nothing to save first. */
   async reset(): Promise<{ closed: boolean }> {
@@ -219,6 +233,10 @@ export default {
         return json(await stub.query(b.sql, b.params ?? []));
       }
       if (action === "stats") return json(await stub.stats());
+      if (action === "dump" && request.method === "GET") {
+        const sql = await stub.dumpSql();
+        return new Response(sql, { headers: { "content-type": "text/plain; charset=utf-8", "content-disposition": `attachment; filename="${name}.sql"` } });
+      }
       if (action === "export" && request.method === "GET") {
         const buf = await stub.exportTar();
         return new Response(buf, { headers: { "content-type": "application/gzip", "content-disposition": `attachment; filename="${name}.tar.gz"`, "content-length": String(buf.byteLength) } });

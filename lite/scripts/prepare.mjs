@@ -6,6 +6,8 @@ import { copyFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 mkdirSync("src/pglite", { recursive: true });
 for (const f of ["pglite.wasm", "initdb.wasm", "pglite.data"]) copyFileSync(`node_modules/@electric-sql/pglite/dist/${f}`, `src/pglite/${f}`);
+copyFileSync("node_modules/@electric-sql/pglite-tools/dist/pg_dump.wasm", "src/pglite/pg_dump.wasm");
 execFileSync("node", ["scripts/patch-pglite.mjs"], { stdio: "inherit" });
 execFileSync("node", ["scripts/patch-wasm-min.mjs", "src/pglite/pglite.wasm", "512"], { stdio: "inherit" });
+execFileSync("node", ["scripts/patch-wasm-min.mjs", "src/pglite/pg_dump.wasm", "256"], { stdio: "inherit" });
 execFileSync("node", ["scripts/make-fn-wrappers.mjs"], { stdio: "inherit" });

@@ -624,7 +624,20 @@ impl Link {
             self.query(&sql).await?;
         }
         if !self.prepared.is_empty() {
-            let mut batch: Vec<u8> = self.prepared.iter().flat_map(|(_, raw)| raw.clone()).collect();
+            // One PGlite instance is one session for the object's whole
+            // life, so when a second client kept it alive our let-go did not
+            // drop these statements. Close each by name before re-parsing -
+            // a no-op when it is gone (evicted), a clean replace when it is
+            // not - so a resume never collides and never touches another
+            // link's statements the way DEALLOCATE ALL would.
+            let mut batch = Vec::new();
+            for (name, raw) in &self.prepared {
+                let mut close = vec![b'S'];
+                close.extend_from_slice(&self.rename(name.as_bytes()));
+                close.push(0);
+                batch.extend_from_slice(&message(b'C', &close));
+                batch.extend_from_slice(raw);
+            }
             batch.extend_from_slice(&message(b'S', &[]));
             self.send(&batch).await?;
             self.drain().await?;
@@ -819,6 +832,27 @@ mod tests {
         assert!(l.sticky);
         assert_eq!(set_key("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY").as_deref(), Some("characteristics"));
         assert_eq!(set_key("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"), None);
+    }
+
+    #[test]
+    fn resume_batch_closes_before_reparsing() {
+        let mut l = link();
+        l.forward(&message(b'P', b"s0\0select 1\0\0\0"));
+        // What resume() builds for the prepared statements.
+        let mut batch = Vec::new();
+        for (name, raw) in &l.prepared {
+            let mut close = vec![b'S'];
+            close.extend_from_slice(&l.rename(name.as_bytes()));
+            close.push(0);
+            batch.extend_from_slice(&message(b'C', &close));
+            batch.extend_from_slice(raw);
+        }
+        batch.extend_from_slice(&message(b'S', &[]));
+        let mut saw = vec![];
+        Framer::default().observe(&batch, |t, _| saw.push(t));
+        assert_eq!(saw, vec![b'C', b'P', b'S'], "close, then re-parse, then sync");
+        // The Close names the engine's statement, not the client's.
+        assert_eq!(&batch[..message(b'C', b"Sabc_s0\0").len()], message(b'C', b"Sabc_s0\0").as_slice());
     }
 
     #[test]

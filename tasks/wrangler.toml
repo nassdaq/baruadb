@@ -1,0 +1,22 @@
+# Barua Tasks: durable background work for any application. One Durable
+# Object per project holds that project's tasks in its own storage and runs
+# them with its alarm - the object is the queue, the scheduler and the
+# retry engine, and it costs nothing while there is nothing to run.
+name = "barua-tasks"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[observability]
+enabled = true
+
+[[durable_objects.bindings]]
+name = "QUEUE"
+class_name = "Queue"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Queue"]
+
+# Secrets (wrangler secret put <NAME>):
+#   TASKS_ADMIN_TOKEN - mints project keys (POST /projects)

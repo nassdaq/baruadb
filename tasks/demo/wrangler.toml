@@ -1,0 +1,9 @@
+# The demo app: "a developer's application" that receives tasks. Deployed
+# separately from Barua Tasks on purpose - it stands in for any app, on any
+# host, that a task gets delivered to.
+name = "barua-tasks-demo"
+main = "src/index.mjs"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# Secrets: TASKS_KEY - the project key, used to verify deliveries

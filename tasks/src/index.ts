@@ -15,6 +15,8 @@ import { nextRun, parseCron } from "./cron";
 
 export interface Env {
   QUEUE: DurableObjectNamespace<Queue>;
+  /** The SDK file and its types, served as static assets. */
+  ASSETS: Fetcher;
   /** Mints project keys. Without it no project can be created. */
   TASKS_ADMIN_TOKEN?: string;
 }
@@ -490,7 +492,17 @@ export default {
     const p = url.pathname;
     const m = request.method;
     if (m === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-    if (p === "/" || p === "/health") return json({ service: "barua-tasks", ok: true });
+    if (p === "/" || p === "/health") return json({ service: "barua-tasks", ok: true, docs: "https://barua.app/docs/tasks", sdk: `${url.origin}/sdk.mjs` });
+    // The SDK by URL: one file, no dependencies. CORS so a browser or Deno
+    // can import it straight from here.
+    if ((p === "/sdk.mjs" || p === "/sdk.d.ts") && m === "GET") {
+      const r = await env.ASSETS.fetch(request);
+      const h = new Headers(r.headers);
+      h.set("access-control-allow-origin", "*");
+      h.set("cache-control", "public, max-age=300");
+      if (p === "/sdk.mjs") h.set("content-type", "text/javascript; charset=utf-8");
+      return new Response(r.body, { status: r.status, headers: h });
+    }
 
     // Minting a project: the operator's token and a handler URL in, a key out.
     // The key is the project: it names the object and signs its deliveries.

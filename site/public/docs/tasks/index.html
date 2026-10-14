@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barua Tasks — docs · durable background work for any application</title>
+<meta name="description" content="Enqueue a task with one call. Barua keeps it, delivers it to your app, retries when your app fails, runs schedules, and keeps every attempt where you — or your AI assistant — can read it. Quickstart, every framework, API reference.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://barua.app/docs/tasks/">
+<meta property="og:title" content="Barua Tasks — docs">
+<meta property="og:description" content="Durable background work for any application. One call to enqueue; delivered, retried, scheduled, and inspectable.">
+<meta property="og:image" content="https://barua.app/og.png">
+<meta name="theme-color" content="#09090a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f3f1" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 253 253'%3E%3Cpath fill='%2326B2B3' d='M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --accent:#26B2B3; --ink:#fff; --bg:#09090a;
+  --edge:rgba(255,255,255,.14); --hair:rgba(255,255,255,.08);
+  --dim:rgba(255,255,255,.56); --faint:rgba(255,255,255,.34);
+  --code:rgba(255,255,255,.045); --mark:rgba(38,178,179,.14);
+}
+@media (prefers-color-scheme: light){
+  :root{ --accent:#186F70; --ink:#0b0b0c; --bg:#f3f3f1;
+    --edge:rgba(0,0,0,.16); --hair:rgba(0,0,0,.09);
+    --dim:rgba(0,0,0,.58); --faint:rgba(0,0,0,.38);
+    --code:rgba(0,0,0,.045); --mark:rgba(24,111,112,.12); }
+}
+*{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; scroll-padding-top:84px; }
+body{ margin:0; background:var(--bg); color:var(--ink);
+  font:400 16px/1.6 "Outfit", ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing:-.005em; -webkit-font-smoothing:antialiased; }
+a{ color:inherit; text-decoration:none; }
+a:hover{ color:var(--accent); }
+:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
+
+.top{ position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--hair); }
+.top .in{ max-width:1180px; margin:0 auto; padding:0 24px; height:60px; display:flex; align-items:center; gap:18px; }
+.brand{ display:inline-flex; align-items:center; gap:10px; font-weight:500; }
+.brand svg{ width:22px; height:22px; }
+.crumb{ color:var(--faint); }
+.top .right{ margin-left:auto; display:flex; gap:22px; color:var(--dim); font-size:15px; }
+
+.wrap{ max-width:1180px; margin:0 auto; padding:0 24px; display:grid; grid-template-columns:232px minmax(0,1fr); gap:56px; }
+aside{ position:sticky; top:60px; align-self:start; height:calc(100vh - 60px); overflow:auto; padding:36px 0 40px; font-size:14px; }
+aside .g{ color:var(--faint); font-size:12px; letter-spacing:.08em; text-transform:uppercase; margin:22px 0 8px; }
+aside .g:first-child{ margin-top:0; }
+aside a{ display:block; padding:4px 0; color:var(--dim); }
+aside a.sub{ padding-left:14px; font-size:13px; }
+aside a:hover{ color:var(--ink); }
+main{ padding:48px 0 120px; max-width:720px; }
+
+h1{ font-size:clamp(2.1rem, 4vw, 3rem); line-height:1.08; font-weight:400; letter-spacing:-.02em; margin:0 0 10px; }
+.lede{ font-size:1.2rem; color:var(--dim); margin:0 0 34px; font-weight:300; }
+h2{ font-size:1.55rem; font-weight:400; letter-spacing:-.015em; margin:72px 0 14px; padding-top:22px; border-top:1px solid var(--hair); }
+h2:first-of-type{ border-top:0; padding-top:0; margin-top:0; }
+h3{ font-size:1.1rem; font-weight:500; margin:34px 0 8px; }
+p, li{ color:var(--ink); }
+p.note, .note li{ color:var(--dim); }
+ul{ padding-left:20px; } li{ margin:4px 0; }
+hr{ border:0; border-top:1px solid var(--hair); margin:32px 0; }
+code{ font:400 .88em/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--code); padding:.1em .38em; border-radius:4px; }
+pre{ background:var(--code); border:1px solid var(--hair); border-radius:8px; padding:14px 16px; overflow:auto; margin:12px 0 18px; }
+pre code{ background:none; padding:0; font-size:.86rem; line-height:1.55; }
+.cap{ font-size:12px; color:var(--faint); letter-spacing:.06em; text-transform:uppercase; margin:18px 0 -6px; }
+table{ border-collapse:collapse; width:100%; margin:12px 0 22px; font-size:.95rem; }
+th{ text-align:left; font-weight:500; color:var(--dim); font-size:.85rem; padding:8px 10px 8px 0; border-bottom:1px solid var(--edge); }
+td{ padding:9px 10px 9px 0; border-bottom:1px solid var(--hair); vertical-align:top; }
+td code{ white-space:nowrap; }
+.k{ color:var(--accent); }
+mark{ background:var(--mark); color:inherit; padding:.05em .3em; border-radius:3px; }
+.steps{ counter-reset:s; list-style:none; padding:0; }
+.steps li{ counter-increment:s; position:relative; padding-left:38px; margin:14px 0; }
+.steps li::before{ content:counter(s); position:absolute; left:0; top:1px; width:24px; height:24px; border:1px solid var(--edge); border-radius:50%; font-size:12px; display:grid; place-items:center; color:var(--dim); }
+.foot{ border-top:1px solid var(--hair); margin-top:80px; padding-top:22px; color:var(--faint); font-size:13px; display:flex; gap:22px; flex-wrap:wrap; }
+@media (max-width: 980px){
+  .wrap{ grid-template-columns:1fr; gap:0; }
+  aside{ position:static; height:auto; padding:24px 0 0; border-bottom:1px solid var(--hair); }
+  aside .g{ display:inline-block; margin:10px 18px 4px 0; }
+  aside a{ display:inline-block; margin-right:16px; }
+  aside a.sub{ padding-left:0; }
+  main{ padding-top:32px; }
+}
+</style>
+</head>
+<body>
+
+<div class="top"><div class="in">
+  <a class="brand" href="/" aria-label="Barua home">
+    <svg viewBox="0 0 253 253" aria-hidden="true"><path fill="#26B2B3" d="M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z"/></svg>
+    Barua
+  </a>
+  <span class="crumb">/</span><span>Docs</span><span class="crumb">/</span><span>Tasks</span>
+  <nav class="right"><a href="https://console.barua.app">Console</a></nav>
+</div></div>
+
+<div class="wrap">
+<aside aria-label="On this page">
+  <div class="g">Start</div>
+  <a href="#overview">Overview</a>
+  <a href="#quickstart">Quickstart</a>
+  <a href="#install">Install the SDK</a>
+  <div class="g">Receive tasks</div>
+  <a href="#receive">Your handler</a>
+  <a class="sub" href="#workers">Cloudflare Workers</a>
+  <a class="sub" href="#nextjs">Next.js</a>
+  <a class="sub" href="#node">Node · Express</a>
+  <a class="sub" href="#hono">Hono</a>
+  <a class="sub" href="#deno">Deno · Bun</a>
+  <a class="sub" href="#any">Any language</a>
+  <div class="g">Send tasks</div>
+  <a href="#send">Enqueue</a>
+  <a href="#schedules">Delays and schedules</a>
+  <a href="#retries">Retries and failures</a>
+  <a href="#idempotency">Idempotency</a>
+  <div class="g">More</div>
+  <a href="#ai">For AI assistants</a>
+  <a href="#security">Security</a>
+  <a href="#api">API reference</a>
+  <a href="#sdk">SDK reference</a>
+  <a href="#limits">Limits</a>
+  <a href="#troubleshooting">Troubleshooting</a>
+</aside>
+
+<main>
+<h1>Barua Tasks</h1>
+<p class="lede">Durable background work for any application. Enqueue a task with one call; Barua keeps it, delivers it to your app when it is due, retries when your app fails, runs schedules, and keeps every attempt where you can read it and put it back.</p>
+
+<h2 id="overview">Overview</h2>
+<p>Applications constantly need work to happen <em>after</em> the request ends — send the welcome email, resize the upload, retry the webhook, run the nightly report. Doing that reliably normally means running a queue, workers, a scheduler and a retry system of your own. Tasks is that part, as a service, for an app on any host.</p>
+<p>The shape is simple. Your app <strong>enqueues</strong> a task. Barua <strong>delivers</strong> it by sending an HTTP <code>POST</code> to a URL your app answers on. What your app answers decides what happens next:</p>
+<table>
+<tr><th>Your handler answers</th><th>Barua does</th></tr>
+<tr><td><code>2xx</code></td><td>marks the task <strong>done</strong>, keeps the body as its result</td></tr>
+<tr><td><code>5xx</code>, <code>408</code>, <code>429</code>, a timeout, or no connection</td><td><strong>retries</strong> with backoff — about 10 s, 20 s, 40 s… up to an hour between tries</td></tr>
+<tr><td>any other <code>4xx</code></td><td>fails it <strong>for good</strong> — a handler that says “bad request” will say it again</td></tr>
+<tr><td>out of attempts</td><td>the task goes to the <strong>dead-letter</strong> with its last error, for you to read and retry</td></tr>
+</table>
+<p class="note">Delivery is <em>at least once</em>. A task is never lost, but a retry on your side can create a second one — the <a href="#idempotency">idempotency key</a> is how you make that harmless.</p>
+
+<h2 id="quickstart">Quickstart</h2>
+<ol class="steps">
+<li><strong>Switch it on.</strong> In the <a href="https://console.barua.app">console</a>, open a database → <strong>Add-ons → Tasks → Enable</strong>. Give it the URL your app will receive tasks on. You get a key — save it as <code>BARUA_TASKS_KEY</code> in your app’s environment. (You can reveal it again from the same page.)</li>
+<li><strong>Receive.</strong> Add one route to your app that accepts the delivery. The SDK’s <code>handler</code> does the signature check and the answer for you:
+<pre><code>import { handler } from "@barua/tasks";
+
+export const POST = handler(process.env.BARUA_TASKS_KEY, async (task) =&gt; {
+  if (task.name === "send-welcome-email") return sendEmail(task.payload.userId);
+  throw Object.assign(new Error(`no handler for ${task.name}`), { status: 400 });
+});</code></pre></li>
+<li><strong>Send.</strong> Anywhere in your app:
+<pre><code>import { createTasks } from "@barua/tasks";
+const tasks = createTasks({ key: process.env.BARUA_TASKS_KEY });
+
+await tasks.create({ name: "send-welcome-email", payload: { userId: "user_123" } });</code></pre></li>
+<li><strong>Watch it.</strong> The Tasks page in the console shows what is waiting, done, and what needs attention — with the reason, and a Retry button.</li>
+</ol>
+
+<h2 id="install">Install the SDK</h2>
+<p>The SDK is <strong>one file with no dependencies</strong>, written against web standards (<code>fetch</code> and WebCrypto), so the same module runs in Node 18+, Cloudflare Workers, Next.js, Deno, Bun and browsers. Get it any of three ways:</p>
+<p class="cap">npm</p>
+<pre><code>npm install @barua/tasks</code></pre>
+<p class="cap">one file, vendored into your project</p>
+<pre><code>curl -o lib/barua-tasks.mjs https://barua-tasks.kelvineffect.workers.dev/sdk.mjs
+# types, if you want them:
+curl -o lib/barua-tasks.d.ts https://barua-tasks.kelvineffect.workers.dev/sdk.d.ts</code></pre>
+<p class="cap">by URL (Deno, browsers)</p>
+<pre><code>import { createTasks, handler } from "https://barua-tasks.kelvineffect.workers.dev/sdk.mjs";</code></pre>
+<p class="note">Everything below writes <code>from "@barua/tasks"</code>; with the vendored file it is <code>from "./lib/barua-tasks.mjs"</code>. Nothing else changes.</p>
+
+<h2 id="receive">Receive tasks — your handler</h2>
+<p>Barua delivers a task as a <code>POST</code> with a JSON body:</p>
+<pre><code>{
+  "id": "tsk_km2k2p2fnvfu7wcg",
+  "name": "send-welcome-email",
+  "payload": { "userId": "user_123" },
+  "attempt": 1,
+  "max_attempts": 5,
+  "scheduled_at": "2026-10-14T08:00:00.000Z"
+}</code></pre>
+<p>and these headers: <code>x-barua-task-id</code>, <code>x-barua-task-name</code>, <code>x-barua-attempt</code>, and <code>x-barua-signature</code> — an HMAC-SHA256 of the raw body, hex-encoded, keyed with your project key. <strong>Verify it</strong>; nothing else can forge a delivery. You have <strong>30 seconds</strong> to answer.</p>
+<p>The SDK’s <code>handler(key, fn)</code> turns your function into a <code>(Request) =&gt; Response</code> handler that verifies, parses, and answers. The contract of <code>fn(task)</code>:</p>
+<ul>
+<li><strong>return</strong> a value, or nothing → <code>200</code>, task <strong>done</strong>; what you return is kept as its result</li>
+<li><strong>throw</strong> → <code>500</code>, task <strong>retried</strong> with backoff</li>
+<li><strong>throw</strong> an error with <code>status: 400</code> → <code>400</code>, task <strong>fails for good</strong> (an unknown name, an unknown user — things a retry will not fix)</li>
+</ul>
+
+<h3 id="workers">Cloudflare Workers</h3>
+<pre><code>import { handler } from "@barua/tasks";
+
+async function run(task) {
+  if (task.name === "send-welcome-email") return sendEmail(task.payload.userId);
+  throw Object.assign(new Error(`no handler for ${task.name}`), { status: 400 });
+}
+
+export default {
+  fetch(request, env) {
+    return handler(env.BARUA_TASKS_KEY, run)(request);
+  },
+};</code></pre>
+<p class="note">Put the key in a secret: <code>wrangler secret put BARUA_TASKS_KEY</code>. Your Worker’s URL is the handler URL you gave the console.</p>
+
+<h3 id="nextjs">Next.js (App Router)</h3>
+<p><code>app/api/tasks/route.ts</code> — a route handler already has the <code>(Request) =&gt; Response</code> shape:</p>
+<pre><code>import { handler } from "@barua/tasks";
+
+export const POST = handler(process.env.BARUA_TASKS_KEY!, async (task) =&gt; {
+  switch (task.name) {
+    case "send-welcome-email": return sendEmail(task.payload.userId);
+    case "generate-report":    return generateReport(task.payload);
+    default: throw Object.assign(new Error(`no handler for ${task.name}`), { status: 400 });
+  }
+});</code></pre>
+<p class="note">Handler URL: <code>https://your-app.example/api/tasks</code>. Keep this route out of any middleware that rewrites the body — the signature is over the raw bytes.</p>
+
+<h3 id="node">Node · Express</h3>
+<p>Express parses bodies before you see them, so read the raw body on this route and use <code>verify</code> directly:</p>
+<pre><code>import express from "express";
+import { verify } from "@barua/tasks";
+
+const app = express();
+const KEY = process.env.BARUA_TASKS_KEY;
+
+app.post("/tasks", express.raw({ type: "*/*" }), async (req, res) =&gt; {
+  const body = req.body.toString("utf8");
+  const ok = await verify({ key: KEY, body, signature: req.get("x-barua-signature") ?? "" });
+  if (!ok) return res.status(401).json({ error: "bad signature" });
+
+  const task = JSON.parse(body);
+  try {
+    const out = await run(task);            // return = done, throw = retry
+    res.json(out ?? { ok: true });
+  } catch (e) {
+    res.status(e.status ?? 500).json({ error: e.message });   // status 400 = fail for good
+  }
+});
+
+app.listen(3000);</code></pre>
+
+<h3 id="hono">Hono</h3>
+<pre><code>import { Hono } from "hono";
+import { handler } from "@barua/tasks";
+
+const app = new Hono();
+app.post("/tasks", (c) =&gt; handler(c.env.BARUA_TASKS_KEY, run)(c.req.raw));
+export default app;</code></pre>
+
+<h3 id="deno">Deno · Bun</h3>
+<pre><code>// Deno — import by URL, no install
+import { handler } from "https://barua-tasks.kelvineffect.workers.dev/sdk.mjs";
+Deno.serve(handler(Deno.env.get("BARUA_TASKS_KEY"), run));
+
+// Bun
+import { handler } from "@barua/tasks";
+Bun.serve({ fetch: handler(process.env.BARUA_TASKS_KEY, run) });</code></pre>
+
+<h3 id="any">Any language</h3>
+<p>There is nothing JavaScript-specific about Tasks: receiving is a signed <code>POST</code>, sending is an HTTP API (<a href="#api">reference below</a>). Verify the signature with HMAC-SHA256 over the raw body and compare it to the header in constant time. In Python:</p>
+<pre><code>import hmac, hashlib, json, os
+from flask import Flask, request
+
+app = Flask(__name__)
+KEY = os.environ["BARUA_TASKS_KEY"].encode()
+
+@app.post("/tasks")
+def tasks():
+    body = request.get_data()                       # raw bytes
+    want = hmac.new(KEY, body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(want, request.headers.get("x-barua-signature", "")):
+        return {"error": "bad signature"}, 401
+    task = json.loads(body)
+    if task["name"] == "send-welcome-email":
+        send_email(task["payload"]["userId"])
+        return {"ok": True}                          # 200 → done
+    return {"error": "no handler"}, 400              # 400 → fail for good; raise/500 → retry</code></pre>
+<p>To enqueue from Python, or anything with an HTTP client:</p>
+<pre><code>import requests
+requests.post("https://barua-tasks.kelvineffect.workers.dev/tasks",
+    headers={"Authorization": f"Bearer {KEY}"},
+    json={"name": "send-welcome-email", "payload": {"userId": "user_123"}})</code></pre>
+
+<h2 id="send">Send tasks — enqueue</h2>
+<pre><code>import { createTasks } from "@barua/tasks";
+const tasks = createTasks({ key: process.env.BARUA_TASKS_KEY });
+
+const t = await tasks.create({
+  name: "send-welcome-email",          // required — your handler switches on it
+  payload: { userId: "user_123" },     // any JSON, up to 64 KB
+});
+t.id;        // "tsk_…"
+t.status;    // "pending"</code></pre>
+<p>Reading back, inspecting, and acting:</p>
+<pre><code>await tasks.get(t.id);            // the task, with every delivery attempt
+await tasks.list({ status: "dead" });
+await tasks.failed();             // the dead-letter, newest first
+await tasks.retry(t.id);          // back in the queue, to run now
+await tasks.cancel(t.id);         // a task still waiting
+await tasks.stats();              // counts by status, next due</code></pre>
+
+<h2 id="schedules">Delays and schedules</h2>
+<pre><code>// in an hour
+await tasks.create({ name: "remind", payload: { id: 7 }, delay: 3600 });
+
+// at a moment (ISO 8601, up to 30 days out)
+await tasks.create({ name: "publish", payload: { post: 12 }, run_at: "2026-11-01T09:00:00Z" });
+
+// on a schedule: five-field cron, UTC — runs on every match, forever
+await tasks.create({ name: "nightly-report", cron: "0 2 * * *" });
+await tasks.create({ name: "sweep", cron: "*/15 * * * *" });</code></pre>
+<p>Cron understands <code>*</code>, numbers, ranges (<code>1-5</code>), steps (<code>*/15</code>), lists (<code>1,15</code>); Sunday is <code>0</code> or <code>7</code>; when both day-of-month and weekday are set, either matching counts. A cron task <strong>never dies</strong>: a failed occurrence is recorded with its error and the next one is booked. Cancel it to stop the schedule.</p>
+
+<h2 id="retries">Retries and failures</h2>
+<p>When your handler fails in a way that might pass next time — a <code>5xx</code>, a timeout, a dropped connection, a <code>429</code> — Barua retries with exponential backoff and jitter: roughly 10 s, then 20 s, 40 s, 80 s… capped at an hour, so a thousand failing tasks never line up and hit you in the same second. After <code>max_attempts</code> (default 5, up to 25) the task is <strong>dead</strong>: it keeps its payload and last error, every attempt stays on record, and it waits for a retry.</p>
+<p>When your handler says the task itself is wrong — any <code>4xx</code> except <code>408</code>/<code>429</code> — Barua does not retry. It will not pass next time either.</p>
+<pre><code>const t = await tasks.get("tsk_km2k2p2fnvfu7wcg");
+t.status;       // "dead"
+t.last_error;   // 'HTTP 500: {"error":"Cannot read properties of undefined (reading \'email\')"}'
+t.runs;         // [{ attempt: 1, status: "retry", http_status: 500, ms: 197, error: … }, { attempt: 2, status: "dead", … }]
+
+// fix the handler, then:
+await tasks.retry(t.id);        // attempts reset, runs now</code></pre>
+
+<h2 id="idempotency">Idempotency</h2>
+<p>Two sides to it. <strong>Your handler</strong> may see the same task twice (at-least-once delivery) — make it safe to run again: check before you charge, upsert instead of insert. <strong>Your producer</strong> may retry a <code>create</code> after a network blip — pass an <code>idempotency_key</code> and the second call returns the first task instead of making another:</p>
+<pre><code>const t = await tasks.create({
+  name: "charge-order",
+  payload: { orderId: "ord_9" },
+  idempotency_key: "charge-ord_9",     // up to 200 characters, unique per project
+});
+t.deduplicated;   // true on the second call with the same key</code></pre>
+
+<h2 id="ai">For AI assistants</h2>
+<p>Tasks is built so the assistant that wrote your handler can debug it. The same queue is exposed as <abbr title="Model Context Protocol">MCP</abbr> tools — <code>failed_tasks</code>, <code>get_task</code>, <code>retry_task</code>, <code>list_tasks</code>, <code>create_task</code>, <code>cancel_task</code>, <code>queue_stats</code> — so Claude can read <em>why</em> a task failed, with the real error and payload, fix the code, and put the task back, without a person reading a dashboard in between.</p>
+<p>In Claude Code:</p>
+<pre><code>claude mcp add --transport http barua-tasks \
+  https://barua-tasks.kelvineffect.workers.dev/mcp \
+  --header "Authorization: Bearer tk_…"</code></pre>
+<p>Then: <mark>“Check my failed tasks and fix the handler.”</mark> The assistant calls <code>failed_tasks</code>, sees <code>Cannot read properties of undefined (reading 'email')</code> on <code>send-welcome-email</code> with the payload that caused it, patches the code, and calls <code>retry_task</code>. That loop is the point.</p>
+
+<h2 id="security">Security</h2>
+<ul>
+<li><strong>Verify every delivery.</strong> The <code>x-barua-signature</code> header is the HMAC-SHA256 of the raw body under your key. <code>handler</code> and <code>verify</code> do this; if you roll your own, compare in constant time and hash the <em>raw bytes</em>, not a re-serialised object.</li>
+<li><strong>The key is a secret.</strong> It both authorises your app to enqueue and signs what Barua sends you. Keep it in your environment, never in client-side code. The console only shows it when you ask.</li>
+<li><strong>Rotate</strong> by turning Tasks off and on again on the database: a new key, and the old one stops working.</li>
+<li><strong>Payloads are stored</strong> and shown in the console. Put an id in the payload and look the sensitive thing up in your handler, rather than putting the thing itself in the task.</li>
+<li>Deliveries come from <code>user-agent: barua-tasks/1</code>; the signature is the only thing to trust.</li>
+</ul>
+
+<h2 id="api">API reference</h2>
+<p>Base URL <code>https://barua-tasks.kelvineffect.workers.dev</code>. Every request carries <code>Authorization: Bearer tk_…</code> (your key). Bodies and responses are JSON.</p>
+<table>
+<tr><th>Call</th><th>What</th></tr>
+<tr><td><code>POST /tasks</code></td><td>Create. <code>{ name, payload?, delay?, run_at?, cron?, max_attempts?, idempotency_key?, url? }</code> → <code>201</code> the task; <code>200</code> with <code>deduplicated: true</code> on an idempotency hit.</td></tr>
+<tr><td><code>GET /tasks?status=&amp;name=&amp;limit=</code></td><td>List, newest first. <code>status</code>: <code>pending</code> · <code>running</code> · <code>done</code> · <code>dead</code> · <code>cancelled</code>. <code>limit</code> up to 200.</td></tr>
+<tr><td><code>GET /tasks/:id</code></td><td>One task with <code>runs</code>: every attempt’s timing, HTTP status and error.</td></tr>
+<tr><td><code>POST /tasks/:id/retry</code></td><td>A dead, done or cancelled task back in the queue, now.</td></tr>
+<tr><td><code>DELETE /tasks/:id</code></td><td>Cancel a task still waiting.</td></tr>
+<tr><td><code>GET /stats</code></td><td><code>{ handler_url, tasks: { pending, running, done, dead, cancelled }, next_due }</code></td></tr>
+<tr><td><code>POST /handler</code></td><td><code>{ handler_url }</code> — change where tasks are delivered.</td></tr>
+<tr><td><code>POST /mcp</code></td><td>The queue as MCP tools (JSON-RPC).</td></tr>
+</table>
+<p class="cap">a task</p>
+<pre><code>{
+  "id": "tsk_…", "name": "send-welcome-email", "payload": { … }, "url": null,
+  "status": "pending" | "running" | "done" | "dead" | "cancelled",
+  "attempts": 0, "max_attempts": 5,
+  "next_run_at": "…", "cron": null, "idempotency_key": null,
+  "created_at": "…", "updated_at": "…", "finished_at": null,
+  "last_error": null, "result": null
+}</code></pre>
+<p class="cap">field rules</p>
+<ul class="note">
+<li><code>name</code> — letters, digits, <code>_ . : -</code>; up to 100 characters</li>
+<li><code>delay</code> — seconds; <code>run_at</code> — ISO 8601; either up to 30 days out</li>
+<li><code>cron</code> — five fields, UTC; takes precedence over <code>delay</code>/<code>run_at</code></li>
+<li><code>max_attempts</code> — 1 to 25, default 5</li>
+<li><code>url</code> — deliver this task somewhere other than the project’s handler</li>
+</ul>
+<p>Errors are <code>{ "error": "…" }</code> with <code>400</code> (invalid), <code>401</code> (no or wrong key), <code>404</code>, or <code>409</code> (e.g. retrying a task that is already pending).</p>
+
+<h2 id="sdk">SDK reference</h2>
+<pre><code>import { createTasks, verify, handler } from "@barua/tasks";
+
+const tasks = createTasks({ key, url? });   // url defaults to the Barua Tasks service
+
+tasks.create(task)                 // → Task            see "a task" above
+tasks.get(id)                      // → Task &amp; { runs }
+tasks.list({ status?, name?, limit? })   // → Task[]
+tasks.failed(limit = 20)           // → Task[]          the dead-letter
+tasks.retry(id)                    // → Task
+tasks.cancel(id)                   // → Task
+tasks.stats()                      // → Stats
+tasks.setHandler(handler_url)      // → { handler_url }
+
+verify({ key, body, signature })   // → Promise&lt;boolean&gt;   body is the raw request text
+handler(key, fn)                   // → (Request) =&gt; Promise&lt;Response&gt;
+//   fn(task): return → done · throw → retry · throw { status: 400 } → fail for good</code></pre>
+<p>Every method throws an <code>Error</code> with a <code>status</code> property on a non-2xx answer. TypeScript types ship with the package (<code>index.d.ts</code>).</p>
+
+<h2 id="limits">Limits</h2>
+<ul>
+<li>Payload up to <strong>64 KB</strong>; a handler’s result is kept up to 4 KB, an error up to 2 KB.</li>
+<li><code>max_attempts</code> 1–25, default 5.</li>
+<li>A task can be scheduled at most <strong>30 days</strong> out.</li>
+<li><strong>10 deliveries</strong> in flight per project at a time; <strong>30 s</strong> for your handler to answer.</li>
+<li>Finished tasks and their attempts are kept for <strong>7 days</strong>.</li>
+<li>Delivery is at least once.</li>
+</ul>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p><strong>Tasks die with <code>HTTP 401: bad signature</code>.</strong> Your handler is verifying with a different key than the one that signed the delivery — usually an old key after Tasks was turned off and on, or a key from another database. Check <code>BARUA_TASKS_KEY</code> against the one the console shows. If you verify by hand, make sure you hash the raw body: a framework that parses and re-serialises JSON changes the bytes.</p>
+<p><strong><code>no handler for &lt;name&gt;</code>.</strong> Your handler threw with <code>status: 400</code> for a name it does not know, so the task failed for good. Add the case and <code>retry</code> the task.</p>
+<p><strong>Tasks time out.</strong> You have 30 seconds. Do the work and answer; for something longer, have the handler enqueue the next step as its own task and return.</p>
+<p><strong>Tasks stay <code>pending</code>.</strong> They are scheduled for later (<code>next_run_at</code>), or Barua cannot reach your handler URL at all — check <code>GET /stats</code> for <code>next_due</code> and the task’s <code>last_error</code>.</p>
+<p><strong>A task ran twice.</strong> At-least-once delivery, usually after your handler answered slowly and a retry overlapped. Make the handler idempotent (see <a href="#idempotency">above</a>).</p>
+<p><strong><code>409: task is already pending</code> on retry.</strong> It is already queued; nothing to do.</p>
+
+<div class="foot">
+  <span>Barua Tasks · <a href="https://console.barua.app">Console</a></span>
+  <span><a href="https://barua-tasks.kelvineffect.workers.dev/sdk.mjs">sdk.mjs</a> · <a href="https://barua-tasks.kelvineffect.workers.dev/sdk.d.ts">sdk.d.ts</a></span>
+  <span>Built in Dar es Salaam</span>
+</div>
+</main>
+</div>
+</body>
+</html>

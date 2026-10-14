@@ -55,8 +55,18 @@ project key. Verify it; nothing else can forge a delivery. You have 30 seconds.
 
 ## The SDK
 
+Full integration docs — quickstart, every framework, API reference:
+**https://barua.app/docs/tasks**
+
 `sdk/index.mjs` — web-standard (`fetch` + WebCrypto), no dependencies; the
-same file runs in Node 18+, Workers, Deno, Bun and browsers.
+same file runs in Node 18+, Workers, Deno, Bun and browsers. Get it any of
+three ways:
+
+```
+npm install @barua/tasks                                        # the package
+curl -O https://barua-tasks.kelvineffect.workers.dev/sdk.mjs    # one file, vendor it
+import { … } from "https://barua-tasks.kelvineffect.workers.dev/sdk.mjs"   # Deno, browsers
+```
 
 ```js
 import { createTasks, handler } from "./sdk/index.mjs";

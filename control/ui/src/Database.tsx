@@ -722,8 +722,14 @@ function TasksAddon({ db }: { db: Database }) {
       </Card>
 
       <Card className="p-5">
-        <div className="mb-2 text-[12px] text-dim">From your app</div>
-        <pre className="overflow-auto rounded-md border border-line bg-base p-3 font-mono text-[11px] text-dim">{`import { createTasks } from "@barua/tasks";
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="text-[12px] text-dim">From your app</span>
+          <a href="https://barua.app/docs/tasks" target="_blank" rel="noreferrer" className="text-[12px] text-accent hover:underline">
+            Read the docs →
+          </a>
+        </div>
+        <pre className="overflow-auto rounded-md border border-line bg-base p-3 font-mono text-[11px] text-dim">{`// one file, no dependencies: npm install @barua/tasks, or vendor sdk.mjs
+import { createTasks } from "@barua/tasks";
 const tasks = createTasks({ key: process.env.BARUA_TASKS_KEY });
 
 await tasks.create({ name: "send-welcome-email", payload: { userId: "user_123" } });

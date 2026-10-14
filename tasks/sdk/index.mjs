@@ -1,8 +1,10 @@
 // The Barua Tasks client. Web-standard - fetch and WebCrypto only - so it
 // runs the same in Node 18+, Workers, Deno, Bun and a browser. No
-// dependencies.
+// dependencies. Docs: https://barua.app/docs/tasks
 //
-//   import { createTasks, handler } from "./sdk/index.mjs";
+//   npm install @barua/tasks                      → import { … } from "@barua/tasks"
+//   curl -O https://barua-tasks.kelvineffect.workers.dev/sdk.mjs   (one file, vendor it)
+//   import { … } from "https://barua-tasks.kelvineffect.workers.dev/sdk.mjs"   (Deno, browsers)
 //
 //   const tasks = createTasks({ key: process.env.BARUA_TASKS_KEY });
 //   await tasks.create({ name: "send-welcome-email", payload: { userId: "user_123" } });

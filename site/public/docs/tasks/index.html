@@ -214,7 +214,8 @@ export const POST = handler(process.env.BARUA_TASKS_KEY!, async (task) =&gt; {
   switch (task.name) {
     case "send-welcome-email": return sendEmail(task.payload.userId);
     case "generate-report":    return generateReport(task.payload);
-    default: throw Object.assign(new Error(`no handler for ${task.name}`), { status: 400 });
+    default:
+      throw Object.assign(new Error(`no handler for ${task.name}`), { status: 400 });
   }
 });</code></pre>
 <p class="note">Handler URL: <code>https://your-app.example/api/tasks</code>. Keep this route out of any middleware that rewrites the body — the signature is over the raw bytes.</p>
@@ -229,7 +230,8 @@ const KEY = process.env.BARUA_TASKS_KEY;
 
 app.post("/tasks", express.raw({ type: "*/*" }), async (req, res) =&gt; {
   const body = req.body.toString("utf8");
-  const ok = await verify({ key: KEY, body, signature: req.get("x-barua-signature") ?? "" });
+  const signature = req.get("x-barua-signature") ?? "";
+  const ok = await verify({ key: KEY, body, signature });
   if (!ok) return res.status(401).json({ error: "bad signature" });
 
   const task = JSON.parse(body);

@@ -1,5 +1,5 @@
 {
-  "name": "@barua/tasks",
+  "name": "barua-tasks",
   "version": "0.1.0",
   "description": "Durable background work for any application: enqueue, schedule, retry, and receive signed task deliveries. One file, no dependencies.",
   "type": "module",
@@ -7,14 +7,38 @@
   "module": "./index.mjs",
   "types": "./index.d.ts",
   "exports": {
-    ".": { "types": "./index.d.ts", "import": "./index.mjs", "default": "./index.mjs" }
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "default": "./index.mjs"
+    }
   },
-  "files": ["index.mjs", "index.d.ts", "README.md"],
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "README.md"
+  ],
   "sideEffects": false,
-  "engines": { "node": ">=18" },
-  "keywords": ["background-jobs", "queue", "cron", "retry", "webhooks", "durable", "barua"],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "background-jobs",
+    "queue",
+    "cron",
+    "retry",
+    "webhooks",
+    "durable",
+    "barua"
+  ],
   "homepage": "https://barua.app/docs/tasks",
-  "repository": { "type": "git", "url": "https://github.com/nassdaq/workingdb.git", "directory": "tasks/sdk" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nassdaq/workingdb.git",
+    "directory": "tasks/sdk"
+  },
   "license": "MIT",
-  "publishConfig": { "access": "public" }
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -147,14 +147,14 @@ mark{ background:var(--mark); color:inherit; padding:.05em .3em; border-radius:3
 <ol class="steps">
 <li><strong>Switch it on.</strong> In the <a href="https://console.barua.app">console</a>, open a database → <strong>Add-ons → Tasks → Enable</strong>. Give it the URL your app will receive tasks on. You get a key — save it as <code>BARUA_TASKS_KEY</code> in your app’s environment. (You can reveal it again from the same page.)</li>
 <li><strong>Receive.</strong> Add one route to your app that accepts the delivery. The SDK’s <code>handler</code> does the signature check and the answer for you:
-<pre><code>import { handler } from "@barua/tasks";
+<pre><code>import { handler } from "barua-tasks";
 
 export const POST = handler(process.env.BARUA_TASKS_KEY, async (task) =&gt; {
   if (task.name === "send-welcome-email") return sendEmail(task.payload.userId);
   throw Object.assign(new Error(`no handler for ${task.name}`), { status: 400 });
 });</code></pre></li>
 <li><strong>Send.</strong> Anywhere in your app:
-<pre><code>import { createTasks } from "@barua/tasks";
+<pre><code>import { createTasks } from "barua-tasks";
 const tasks = createTasks({ key: process.env.BARUA_TASKS_KEY });
 
 await tasks.create({ name: "send-welcome-email", payload: { userId: "user_123" } });</code></pre></li>
@@ -164,14 +164,14 @@ await tasks.create({ name: "send-welcome-email", payload: { userId: "user_123" }
 <h2 id="install">Install the SDK</h2>
 <p>The SDK is <strong>one file with no dependencies</strong>, written against web standards (<code>fetch</code> and WebCrypto), so the same module runs in Node 18+, Cloudflare Workers, Next.js, Deno, Bun and browsers. Get it any of three ways:</p>
 <p class="cap">npm</p>
-<pre><code>npm install @barua/tasks</code></pre>
+<pre><code>npm install barua-tasks</code></pre>
 <p class="cap">one file, vendored into your project</p>
 <pre><code>curl -o lib/barua-tasks.mjs https://barua-tasks.kelvineffect.workers.dev/sdk.mjs
 # types, if you want them:
 curl -o lib/barua-tasks.d.ts https://barua-tasks.kelvineffect.workers.dev/sdk.d.ts</code></pre>
 <p class="cap">by URL (Deno, browsers)</p>
 <pre><code>import { createTasks, handler } from "https://barua-tasks.kelvineffect.workers.dev/sdk.mjs";</code></pre>
-<p class="note">Everything below writes <code>from "@barua/tasks"</code>; with the vendored file it is <code>from "./lib/barua-tasks.mjs"</code>. Nothing else changes.</p>
+<p class="note">Everything below writes <code>from "barua-tasks"</code>; with the vendored file it is <code>from "./lib/barua-tasks.mjs"</code>. Nothing else changes.</p>
 
 <h2 id="receive">Receive tasks — your handler</h2>
 <p>Barua delivers a task as a <code>POST</code> with a JSON body:</p>
@@ -192,7 +192,7 @@ curl -o lib/barua-tasks.d.ts https://barua-tasks.kelvineffect.workers.dev/sdk.d.
 </ul>
 
 <h3 id="workers">Cloudflare Workers</h3>
-<pre><code>import { handler } from "@barua/tasks";
+<pre><code>import { handler } from "barua-tasks";
 
 async function run(task) {
   if (task.name === "send-welcome-email") return sendEmail(task.payload.userId);
@@ -208,7 +208,7 @@ export default {
 
 <h3 id="nextjs">Next.js (App Router)</h3>
 <p><code>app/api/tasks/route.ts</code> — a route handler already has the <code>(Request) =&gt; Response</code> shape:</p>
-<pre><code>import { handler } from "@barua/tasks";
+<pre><code>import { handler } from "barua-tasks";
 
 export const POST = handler(process.env.BARUA_TASKS_KEY!, async (task) =&gt; {
   switch (task.name) {
@@ -223,7 +223,7 @@ export const POST = handler(process.env.BARUA_TASKS_KEY!, async (task) =&gt; {
 <h3 id="node">Node · Express</h3>
 <p>Express parses bodies before you see them, so read the raw body on this route and use <code>verify</code> directly:</p>
 <pre><code>import express from "express";
-import { verify } from "@barua/tasks";
+import { verify } from "barua-tasks";
 
 const app = express();
 const KEY = process.env.BARUA_TASKS_KEY;
@@ -247,7 +247,7 @@ app.listen(3000);</code></pre>
 
 <h3 id="hono">Hono</h3>
 <pre><code>import { Hono } from "hono";
-import { handler } from "@barua/tasks";
+import { handler } from "barua-tasks";
 
 const app = new Hono();
 app.post("/tasks", (c) =&gt; handler(c.env.BARUA_TASKS_KEY, run)(c.req.raw));
@@ -259,7 +259,7 @@ import { handler } from "https://barua-tasks.kelvineffect.workers.dev/sdk.mjs";
 Deno.serve(handler(Deno.env.get("BARUA_TASKS_KEY"), run));
 
 // Bun
-import { handler } from "@barua/tasks";
+import { handler } from "barua-tasks";
 Bun.serve({ fetch: handler(process.env.BARUA_TASKS_KEY, run) });</code></pre>
 
 <h3 id="any">Any language</h3>
@@ -288,7 +288,7 @@ requests.post("https://barua-tasks.kelvineffect.workers.dev/tasks",
     json={"name": "send-welcome-email", "payload": {"userId": "user_123"}})</code></pre>
 
 <h2 id="send">Send tasks — enqueue</h2>
-<pre><code>import { createTasks } from "@barua/tasks";
+<pre><code>import { createTasks } from "barua-tasks";
 const tasks = createTasks({ key: process.env.BARUA_TASKS_KEY });
 
 const t = await tasks.create({
@@ -387,7 +387,7 @@ t.deduplicated;   // true on the second call with the same key</code></pre>
 <p>Errors are <code>{ "error": "…" }</code> with <code>400</code> (invalid), <code>401</code> (no or wrong key), <code>404</code>, or <code>409</code> (e.g. retrying a task that is already pending).</p>
 
 <h2 id="sdk">SDK reference</h2>
-<pre><code>import { createTasks, verify, handler } from "@barua/tasks";
+<pre><code>import { createTasks, verify, handler } from "barua-tasks";
 
 const tasks = createTasks({ key, url? });   // url defaults to the Barua Tasks service
 

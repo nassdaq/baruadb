@@ -2,7 +2,7 @@
 // runs the same in Node 18+, Workers, Deno, Bun and a browser. No
 // dependencies. Docs: https://barua.app/docs/tasks
 //
-//   npm install @barua/tasks                      → import { … } from "@barua/tasks"
+//   npm install barua-tasks                      → import { … } from "barua-tasks"
 //   curl -O https://barua-tasks.kelvineffect.workers.dev/sdk.mjs   (one file, vendor it)
 //   import { … } from "https://barua-tasks.kelvineffect.workers.dev/sdk.mjs"   (Deno, browsers)
 //

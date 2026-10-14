@@ -1,4 +1,4 @@
-# @barua/tasks
+# barua-tasks
 
 Durable background work for any application. Enqueue a task with one call;
 Barua keeps it, delivers it to your app when it is due, retries with backoff
@@ -9,7 +9,7 @@ One file, no dependencies, web-standard (`fetch` + WebCrypto): the same
 module runs in Node 18+, Cloudflare Workers, Next.js, Deno, Bun and browsers.
 
 ```js
-import { createTasks, handler } from "@barua/tasks";
+import { createTasks, handler } from "barua-tasks";
 
 // send work
 const tasks = createTasks({ key: process.env.BARUA_TASKS_KEY });

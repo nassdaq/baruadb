@@ -63,7 +63,7 @@ same file runs in Node 18+, Workers, Deno, Bun and browsers. Get it any of
 three ways:
 
 ```
-npm install @barua/tasks                                        # the package
+npm install barua-tasks                                        # the package
 curl -O https://barua-tasks.kelvineffect.workers.dev/sdk.mjs    # one file, vendor it
 import { … } from "https://barua-tasks.kelvineffect.workers.dev/sdk.mjs"   # Deno, browsers
 ```

@@ -1,6 +1,6 @@
 {
   "name": "barua-tasks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Durable background work for any application: enqueue, schedule, retry, and receive signed task deliveries. One file, no dependencies.",
   "type": "module",
   "main": "./index.mjs",
@@ -11,7 +11,8 @@
       "types": "./index.d.ts",
       "import": "./index.mjs",
       "default": "./index.mjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "index.mjs",

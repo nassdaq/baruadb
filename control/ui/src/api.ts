@@ -119,6 +119,40 @@ export type Move = {
   at: string;
 };
 
+/** An add-on a customer can switch on inside a database. */
+export type AddonInfo = { kind: string; name: string; summary: string; ready: boolean };
+export type Addon = { kind: string; enabled: boolean; settings: Record<string, string>; enabled_at: string };
+export type TasksStats = {
+  handler_url: string;
+  tasks: { pending: number; running: number; done: number; dead: number; cancelled: number };
+  next_due: string | null;
+  alarm: string | null;
+};
+export type TaskItem = {
+  id: string;
+  name: string;
+  payload: unknown;
+  status: "pending" | "running" | "done" | "dead" | "cancelled";
+  attempts: number;
+  max_attempts: number;
+  next_run_at: string | null;
+  cron: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+  last_error: string | null;
+  result: string | null;
+};
+export type TaskRun = {
+  attempt: number;
+  started_at: string | null;
+  finished_at: string | null;
+  status: string;
+  http_status: number | null;
+  error: string | null;
+  ms: number | null;
+};
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -157,6 +191,25 @@ export const api = {
     }),
   setZone: (id: string, zone: string) =>
     post<{ id: string; zone: string | null; region: string; moved: boolean; note: string }>(`/databases/${id}/zone`, { zone }),
+
+  // ---- add-ons: what a customer switches on inside a database. The console
+  // reaches an add-on through the control plane; its key never comes here
+  // unless the owner asks to see it.
+  addons: (id: string) => call<{ enabled: Addon[]; available: AddonInfo[] }>(`/databases/${id}/addons`),
+  enableTasks: (id: string, handler_url: string) =>
+    post<{ key: string; settings: { handler_url: string } }>(`/databases/${id}/addons/tasks`, { handler_url }),
+  tasksAddon: (id: string) => call<Addon & { stats: TasksStats | null }>(`/databases/${id}/addons/tasks`),
+  tasksKey: (id: string) => call<{ key: string }>(`/databases/${id}/addons/tasks/key`),
+  updateTasks: (id: string, handler_url: string) =>
+    call<Addon>(`/databases/${id}/addons/tasks`, { method: "PATCH", body: JSON.stringify({ handler_url }) }),
+  disableTasks: (id: string) => call<{ enabled: false }>(`/databases/${id}/addons/tasks`, { method: "DELETE" }),
+  taskList: (id: string, status?: string, limit = 50) =>
+    call<{ tasks: TaskItem[] }>(`/databases/${id}/addons/tasks/tasks?limit=${limit}${status ? `&status=${status}` : ""}`).then((r) => r.tasks),
+  taskGet: (id: string, tid: string) => call<TaskItem & { runs: TaskRun[] }>(`/databases/${id}/addons/tasks/tasks/${tid}`),
+  taskRetry: (id: string, tid: string) => post<TaskItem>(`/databases/${id}/addons/tasks/tasks/${tid}/retry`),
+  taskCreate: (id: string, task: { name: string; payload?: unknown; delay?: number; cron?: string; max_attempts?: number }) =>
+    post<TaskItem>(`/databases/${id}/addons/tasks/tasks`, task),
+  taskCancel: (id: string, tid: string) => call<TaskItem>(`/databases/${id}/addons/tasks/tasks/${tid}`, { method: "DELETE" }),
   deleteDatabase: (id: string) => call<{ deleted: string }>(`/databases/${id}`, { method: "DELETE" }),
   branch: (id: string, name: string, point_in_time?: string) =>
     post<{ database: Database }>(`/databases/${id}/branches`, { name, point_in_time }),

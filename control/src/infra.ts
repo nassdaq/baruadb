@@ -15,6 +15,10 @@ export interface Env {
   /** Where a new database is born: "function" (default when the engine is
    *  configured) or "box". */
   NEW_DB_ENGINE?: string;
+  /** Barua Tasks (tasks/), the first add-on. The control plane mints one
+   *  project per database that opts in, using the operator token. */
+  TASKS_URL?: string;
+  TASKS_ADMIN_TOKEN?: string;
   DB: D1Database;
   DB_DOMAIN: string;
   AGENT_URL_TEMPLATE: string;
@@ -103,6 +107,37 @@ export async function lite<T = any>(env: Env, method: string, path: string, payl
 
 /** The WebSocket door of one database, for the box's proxy to relay to. */
 export const wireUrl = (env: Env, id: string) => `${(env.LITE_URL ?? "").replace(/^http/, "ws")}/wire/${id}`;
+
+// ---------------------------------------------------------------- add-ons
+
+export const tasksEnabled = (env: Env) => Boolean(env.TASKS_URL && env.TASKS_ADMIN_TOKEN);
+
+/** A call to Barua Tasks - as a project (bearer = its key) or as the
+ *  operator. The tasks service's own 4xx is passed through; its failures
+ *  become a 502 here. */
+export async function tasks<T = any>(env: Env, key: string, method: string, path: string, payload?: unknown): Promise<T> {
+  if (!env.TASKS_URL) throw new HttpError(503, "tasks are not configured");
+  let res: Response;
+  try {
+    res = await fetch(`${env.TASKS_URL}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e) {
+    throw new HttpError(502, `tasks unreachable: ${e}`);
+  }
+  const text = await res.text();
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { error: text };
+  }
+  if (!res.ok) throw new HttpError(res.status >= 500 ? 502 : res.status, data.error ?? `tasks: ${res.status}`);
+  return data as T;
+}
 
 // ---------------------------------------------------------------- boxes
 

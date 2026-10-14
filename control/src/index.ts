@@ -13,6 +13,8 @@ import {
   loadBox,
   pickBox,
   setDns,
+  tasks,
+  tasksEnabled,
   upsertDns,
   wireUrl,
 } from "./infra";
@@ -306,6 +308,7 @@ async function deleteDatabase(env: Env, c: Caller, id: string): Promise<Response
     });
   }
   await deleteDns(env, db.dns_record_id);
+  await env.DB.prepare("DELETE FROM addons WHERE db_id = ?").bind(db.id).run();
   await env.DB.prepare("DELETE FROM databases WHERE id = ?").bind(db.id).run();
   return json({ deleted: db.id });
 }
@@ -386,6 +389,95 @@ async function functionBeat(req: Request, env: Env): Promise<Response> {
     env.DB.prepare("UPDATE databases SET running = 1, connections = ?, status = 'ready' WHERE id = ?").bind(b.open_sessions ?? 0, db.id),
   ]);
   return json({ exists: true, engine: "function" });
+}
+
+// ---------------------------------------------------------------- add-ons
+// What a customer switches on inside a database. Each add-on holds its own
+// key, sealed like a password: the console reaches the add-on through the
+// control plane, so the key never has to travel to a browser.
+
+interface AddonRow {
+  db_id: string;
+  kind: string;
+  key_enc: string | null;
+  settings: string;
+  created_at: string;
+}
+
+const ADDONS = [
+  {
+    kind: "tasks",
+    name: "Tasks",
+    summary: "Background work - emails, reports, webhooks - run reliably, retried when your app fails, nothing lost.",
+  },
+];
+
+const addonView = (row: AddonRow) => ({ kind: row.kind, enabled: true, settings: JSON.parse(row.settings) as Record<string, string>, enabled_at: row.created_at });
+
+async function addonKey(env: Env, row: AddonRow): Promise<string> {
+  const key = await openPassword(env.PASSWORD_KEY, row.key_enc);
+  if (!key) throw new HttpError(409, "this add-on's key cannot be read any more; disable it and enable it again");
+  return key;
+}
+
+/** /v1/databases/{id}/addons[/{kind}[/...]] for the database's owner. */
+async function addonRoutes(req: Request, env: Env, db: DbRow, kind: string | undefined, rest: string[], m: string): Promise<Response> {
+  if (!kind) {
+    if (m !== "GET") throw new HttpError(404, "not found");
+    const { results } = await env.DB.prepare("SELECT * FROM addons WHERE db_id = ?").bind(db.id).all<AddonRow>();
+    return json({ enabled: results.map(addonView), available: ADDONS.map((a) => ({ ...a, ready: a.kind === "tasks" ? tasksEnabled(env) : false })) });
+  }
+  if (kind !== "tasks") throw new HttpError(404, `no add-on called ${kind}`);
+  if (!tasksEnabled(env)) throw new HttpError(503, "tasks are not available right now");
+  const row = (await env.DB.prepare("SELECT * FROM addons WHERE db_id = ? AND kind = 'tasks'").bind(db.id).first<AddonRow>()) ?? null;
+  const [sub, tid, verb] = rest;
+
+  // Switch it on: a project is minted for this database and its key kept sealed.
+  if (!sub && m === "POST") {
+    if (row) throw new HttpError(409, "tasks are already enabled on this database");
+    const b = await body<{ handler_url?: string }>(req);
+    if (!b.handler_url) throw new HttpError(400, "handler_url is required: where your app receives tasks");
+    try { new URL(b.handler_url); } catch { throw new HttpError(400, "handler_url must be a URL"); }
+    const p = await tasks<{ project_key: string }>(env, env.TASKS_ADMIN_TOKEN!, "POST", "/projects", { handler_url: b.handler_url });
+    await env.DB.prepare("INSERT INTO addons (db_id, kind, key_enc, settings, created_at) VALUES (?, 'tasks', ?, ?, ?)")
+      .bind(db.id, await sealPassword(env.PASSWORD_KEY, p.project_key), JSON.stringify({ handler_url: b.handler_url }), now())
+      .run();
+    return json({ kind: "tasks", enabled: true, settings: { handler_url: b.handler_url }, key: p.project_key, note: "Save the key now; you can reveal it again from the console." }, 201);
+  }
+  if (!row) throw new HttpError(404, "tasks are not enabled on this database");
+  const key = await addonKey(env, row);
+  if (!sub) {
+    if (m === "GET") return json({ ...addonView(row), stats: await tasks(env, key, "GET", "/stats").catch(() => null) });
+    if (m === "PATCH") {
+      const b = await body<{ handler_url?: string }>(req);
+      if (!b.handler_url) throw new HttpError(400, "handler_url is required");
+      try { new URL(b.handler_url); } catch { throw new HttpError(400, "handler_url must be a URL"); }
+      await tasks(env, key, "POST", "/handler", { handler_url: b.handler_url });
+      await env.DB.prepare("UPDATE addons SET settings = ? WHERE db_id = ? AND kind = 'tasks'").bind(JSON.stringify({ handler_url: b.handler_url }), db.id).run();
+      return json({ kind: "tasks", enabled: true, settings: { handler_url: b.handler_url } });
+    }
+    if (m === "DELETE") {
+      await env.DB.prepare("DELETE FROM addons WHERE db_id = ? AND kind = 'tasks'").bind(db.id).run();
+      return json({ kind: "tasks", enabled: false });
+    }
+  }
+  if (sub === "key" && m === "GET") return json({ key });
+  // The queue itself, through the owner's own session.
+  if (sub === "tasks") {
+    if (!tid && m === "GET") {
+      const q = new URL(req.url).searchParams;
+      const qs = new URLSearchParams();
+      for (const k of ["status", "name", "limit"]) if (q.get(k)) qs.set(k, q.get(k)!);
+      return json(await tasks(env, key, "GET", `/tasks${qs.size ? "?" + qs : ""}`));
+    }
+    if (!tid && m === "POST") return json(await tasks(env, key, "POST", "/tasks", await body(req)), 201);
+    if (tid && /^[a-z0-9_]+$/.test(tid)) {
+      if (!verb && m === "GET") return json(await tasks(env, key, "GET", `/tasks/${tid}`));
+      if (!verb && m === "DELETE") return json(await tasks(env, key, "DELETE", `/tasks/${tid}`));
+      if (verb === "retry" && m === "POST") return json(await tasks(env, key, "POST", `/tasks/${tid}/retry`));
+    }
+  }
+  throw new HttpError(404, "not found");
 }
 
 async function adminMoves(env: Env): Promise<Response> {
@@ -924,6 +1016,7 @@ async function route(req: Request, env: Env): Promise<Response> {
     if (id && !action && m === "DELETE") return deleteDatabase(env, c, id);
     if (id && action === "branches" && m === "POST") return createBranch(req, env, c, id);
     if (id && action === "reset-password" && m === "POST") return resetPassword(env, c, id);
+    if (id && action === "addons") return addonRoutes(req, env, await loadDb(env, c, id), parts[4], parts.slice(5), m);
     if (id && action === "suspend" && m === "POST") {
       const db = await loadDb(env, c, id);
       if (db.engine === "function") {

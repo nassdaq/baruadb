@@ -1,6 +1,6 @@
 import { Input, Textarea } from "@headlessui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiError, BRANCHES_PER_DB, CATALOG, ident, literal, type Database, type QueryResult, type Zone } from "./api";
+import { api, ApiError, BRANCHES_PER_DB, CATALOG, ident, literal, type Addon, type Database, type QueryResult, type TaskItem, type TasksStats, type Zone } from "./api";
 import { ArrowPathIcon, PlusIcon } from "@heroicons/react/20/solid";
 import {
   ArrowUturnLeftIcon,
@@ -11,6 +11,7 @@ import {
   TableCellsIcon,
   UsersIcon,
   ArchiveBoxIcon,
+  BoltIcon,
   CursorArrowRaysIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -22,6 +23,7 @@ import {
   Card,
   Confirm,
   ConnectPanel,
+  CopyField,
   cx,
   Dot,
   ErrorNote,
@@ -40,7 +42,7 @@ import { CreateDialogs, CreateMenu, type Kind } from "./Create";
 import { Monitoring } from "./Monitoring";
 import { Spinner } from "./Spinner";
 
-export type Section = "overview" | "branches" | "monitoring" | "tables" | "sql" | "backups" | "roles";
+export type Section = "overview" | "branches" | "monitoring" | "tables" | "sql" | "backups" | "roles" | "addons";
 const PAGE = 50;
 
 // ---------------------------------------------------------------- sidebar
@@ -125,6 +127,15 @@ export function DatabaseSidebar({
           onClick={() => onSection("roles")}
         />
       </NavGroup>
+
+      <NavGroup title="Add-ons">
+        <NavLink
+          label="Tasks"
+          icon={<BoltIcon className="size-4" />}
+          active={section === "addons"}
+          onClick={() => onSection("addons")}
+        />
+      </NavGroup>
     </>
   );
 }
@@ -151,6 +162,7 @@ export function DatabaseView({
       {section === "branches" && <Branches db={db} reload={reload} onOpen={onBack} />}
       {section === "backups" && <Backups db={db} />}
       {section === "roles" && <Roles db={db} />}
+      {section === "addons" && <TasksAddon db={db} />}
     </div>
   );
 }
@@ -479,6 +491,263 @@ function Backups({ db }: { db: Database }) {
 }
 
 // ---------------------------------------------------------------- roles
+
+// ---------------------------------------------------------------- add-ons: tasks
+// Background work, switched on inside this database. The console speaks to
+// the queue through the control plane, so the add-on's key stays sealed
+// unless the owner asks to see it.
+
+const STATUS_TONE: Record<string, "accent" | "neutral"> = { done: "accent" };
+
+/** "in 40s", "in 12 min", "in 3 h" - the other direction from ago(). */
+function due(iso: string): string {
+  const ms = Date.parse(iso) - Date.now();
+  if (ms <= 0) return "now";
+  if (ms < 90_000) return `in ${Math.round(ms / 1000)}s`;
+  if (ms < 90 * 60_000) return `in ${Math.round(ms / 60_000)} min`;
+  return `in ${Math.round(ms / 3_600_000)} h`;
+}
+
+function TasksAddon({ db }: { db: Database }) {
+  // undefined: still loading · null: not switched on
+  const [addon, setAddon] = useState<(Addon & { stats: TasksStats | null }) | null | undefined>(undefined);
+  const [error, setError] = useState("");
+  const [handler, setHandler] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [key, setKey] = useState<string | null>(null);
+  const [failed, setFailed] = useState<TaskItem[]>([]);
+  const [recent, setRecent] = useState<TaskItem[]>([]);
+  const [disabling, setDisabling] = useState(false);
+  const [note, setNote] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const a = await api.tasksAddon(db.id);
+      setAddon(a);
+      setHandler((h) => h || a.settings.handler_url || "");
+      const [f, r] = await Promise.all([api.taskList(db.id, "dead", 20), api.taskList(db.id, undefined, 15)]);
+      setFailed(f);
+      setRecent(r);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) setAddon(null);
+      else setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [db.id]);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const act = async (fn: () => Promise<unknown>, done?: string) => {
+    setBusy(true);
+    setError("");
+    setNote("");
+    try {
+      await fn();
+      if (done) setNote(done);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (addon === undefined) {
+    return (
+      <>
+        <PageHead title="Tasks" />
+        <div className="py-12 text-center text-[13px] text-faint">…</div>
+      </>
+    );
+  }
+
+  if (addon === null) {
+    return (
+      <>
+        <PageHead
+          title="Tasks"
+          subtitle="Background work for this database - emails, reports, webhooks - run reliably, retried when your app fails, nothing lost."
+        />
+        {error && <ErrorNote>{error}</ErrorNote>}
+        <Card className="mb-4 p-5">
+          <p className="mb-4 max-w-[640px] text-[13px] text-dim">
+            Your app enqueues a task with one call. Barua keeps it safe, delivers it to your app when it is due,
+            retries with backoff if your app fails, runs schedules, and keeps every attempt where you - or the
+            assistant that wrote your code - can read it and put it back.
+          </p>
+          <TextField
+            label="Where your app receives tasks"
+            value={handler}
+            onChange={setHandler}
+            placeholder="https://your-app.example/api/tasks"
+            mono
+          />
+          <p className="-mt-1 mb-4 text-xs text-faint">An HTTPS address your app answers on. You can change it later.</p>
+          <Button
+            variant="accent"
+            disabled={busy || !handler}
+            onClick={() =>
+              act(async () => {
+                const r = await api.enableTasks(db.id, handler);
+                setKey(r.key);
+              })
+            }
+          >
+            {busy ? "Enabling…" : "Enable tasks"}
+          </Button>
+        </Card>
+      </>
+    );
+  }
+
+  const s = addon.stats?.tasks;
+  return (
+    <>
+      <PageHead
+        title="Tasks"
+        subtitle={s ? `${s.pending} waiting · ${s.done} done · ${s.dead} need attention` : "Background work for this database."}
+        actions={
+          <Button
+            disabled={busy}
+            onClick={() => act(() => api.taskCreate(db.id, { name: "test", payload: { hello: "barua" }, max_attempts: 2 }), "Test task sent - watch it below.")}
+          >
+            Send a test task
+          </Button>
+        }
+      />
+      {error && <ErrorNote>{error}</ErrorNote>}
+      {note && <p className="mb-3 text-[13px] text-accent">{note}</p>}
+
+      {key && (
+        <Card className="mb-4 p-5">
+          <div className="mb-1.5 text-[12px] text-dim">Your key - save it now</div>
+          <CopyField value={key} />
+          <p className="mt-2 text-xs text-faint">Deliveries to your app are signed with it. You can reveal it again from here.</p>
+        </Card>
+      )}
+
+      <Card className="mb-4 p-5">
+        <div className="flex flex-wrap gap-8">
+          <Stat label="Waiting" value={s?.pending ?? "—"} />
+          <Stat label="Done" value={s?.done ?? "—"} />
+          <Stat label="Need attention" value={s?.dead ?? "—"} />
+          <Stat label="Next due" value={addon.stats?.next_due ? due(addon.stats.next_due) : "nothing"} />
+        </div>
+      </Card>
+
+      <Card className="mb-4 p-5">
+        <TextField label="Where your app receives tasks" value={handler} onChange={setHandler} mono />
+        <div className="flex items-center gap-2">
+          <Button variant="accent" disabled={busy || handler === addon.settings.handler_url} onClick={() => act(() => api.updateTasks(db.id, handler), "Saved.")}>
+            Save
+          </Button>
+          {!key && (
+            <Button
+              disabled={busy}
+              onClick={() =>
+                act(async () => {
+                  const r = await api.tasksKey(db.id);
+                  setKey(r.key);
+                })
+              }
+            >
+              Reveal key
+            </Button>
+          )}
+          <Button className="ml-auto" onClick={() => setDisabling(true)}>
+            Turn off
+          </Button>
+        </div>
+      </Card>
+
+      <h3 className="mb-2 text-[13px] font-medium">Needs attention</h3>
+      <Card className="mb-4 overflow-hidden">
+        {failed.length === 0 ? (
+          <div className="p-4 text-[13px] text-faint">Nothing failed. A task that runs out of attempts appears here with the reason.</div>
+        ) : (
+          <table className="w-full text-[13px]">
+            <tbody>
+              {failed.map((t) => (
+                <tr key={t.id} className="border-b border-line-soft align-top last:border-0">
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium">{t.name}</div>
+                    <div className="font-mono text-[11px] text-faint">{t.id}</div>
+                  </td>
+                  <td className="px-4 py-2.5 text-dim">
+                    <div className="max-w-[460px] break-words font-mono text-[11px]">{t.last_error}</div>
+                    <div className="mt-1 text-xs text-faint">
+                      after {t.attempts} attempt{t.attempts === 1 ? "" : "s"}
+                      {t.finished_at ? ` · ${ago(t.finished_at)}` : ""}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <Button disabled={busy} onClick={() => act(() => api.taskRetry(db.id, t.id), "Back in the queue.")}>
+                      Retry
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <h3 className="mb-2 text-[13px] font-medium">Recent</h3>
+      <Card className="mb-4 overflow-hidden">
+        {recent.length === 0 ? (
+          <div className="p-4 text-[13px] text-faint">No tasks yet. Send a test task, or enqueue one from your app.</div>
+        ) : (
+          <table className="w-full text-[13px]">
+            <tbody>
+              {recent.map((t) => (
+                <tr key={t.id} className="border-b border-line-soft last:border-0">
+                  <td className="px-4 py-2 font-medium">{t.name}</td>
+                  <td className="px-4 py-2">
+                    <Badge tone={STATUS_TONE[t.status] ?? "neutral"}>{t.status}</Badge>
+                  </td>
+                  <td className="px-4 py-2 text-dim">
+                    {t.attempts} / {t.max_attempts}
+                  </td>
+                  <td className="px-4 py-2 text-dim">
+                    {t.cron ? `every · ${t.cron}` : t.next_run_at && t.status === "pending" ? `due ${due(t.next_run_at)}` : ""}
+                  </td>
+                  <td className="px-4 py-2 text-right text-xs text-faint">{ago(t.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <Card className="p-5">
+        <div className="mb-2 text-[12px] text-dim">From your app</div>
+        <pre className="overflow-auto rounded-md border border-line bg-base p-3 font-mono text-[11px] text-dim">{`import { createTasks } from "@barua/tasks";
+const tasks = createTasks({ key: process.env.BARUA_TASKS_KEY });
+
+await tasks.create({ name: "send-welcome-email", payload: { userId: "user_123" } });
+await tasks.create({ name: "nightly-report", cron: "0 2 * * *" });`}</pre>
+      </Card>
+
+      <Confirm
+        open={disabling}
+        onClose={() => setDisabling(false)}
+        title="Turn off tasks?"
+        onConfirm={() => {
+          setDisabling(false);
+          act(async () => {
+            await api.disableTasks(db.id);
+            setAddon(null);
+            setKey(null);
+          });
+        }}
+      >
+        Your app stops being able to enqueue work here, and tasks still waiting are not delivered.
+      </Confirm>
+    </>
+  );
+}
 
 function Roles({ db }: { db: Database }) {
   const [rows, setRows] = useState<QueryResult | null>(null);

@@ -34,6 +34,10 @@ AGENT_URL_TEMPLATE = "https://{box}.pg.barua.app"
 # two by what they measure.
 LITE_URL = "https://barua-lite.kelvineffect.workers.dev"
 NEW_DB_ENGINE = "function"
+# Barua Tasks (tasks/): the first add-on a customer can switch on inside a
+# database. The control plane mints a project per database with the
+# operator token (secret TASKS_ADMIN_TOKEN).
+TASKS_URL = "https://barua-tasks.kelvineffect.workers.dev"
 
 # Secrets (wrangler secret put <NAME>):
 #   ADMIN_TOKEN   - full access (create API keys, manage boxes)
@@ -41,3 +45,4 @@ NEW_DB_ENGINE = "function"
 #   CF_API_TOKEN  - optional: Zone.DNS edit for barua.tz, for per-database DNS records
 #   CF_ZONE_ID    - optional: zone id of barua.tz
 #   LITE_TOKEN    - the function engine's secret (the same value as its LITE_TOKEN)
+#   TASKS_ADMIN_TOKEN - Barua Tasks' operator token (mints a project per database)

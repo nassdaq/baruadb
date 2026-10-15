@@ -107,6 +107,7 @@ mark{ background:var(--mark); color:inherit; padding:.05em .3em; border-radius:3
   <a href="#contract">What a function is</a>
   <a href="#url">Your URL</a>
   <a href="#env">Environment</a>
+  <a href="#database">Database</a>
   <a href="#logs">Logs</a>
   <a href="#redeploy">Changing it</a>
   <div class="g">More</div>
@@ -161,6 +162,20 @@ fn main() {
 
 <h2 id="env">Environment</h2>
 <p>The <strong>Environment</strong> tab holds <code>KEY=value</code> pairs. Save them and the next call sees them — <code>std::env::var</code> in Rust, <code>os.Getenv</code> in Go. Keys and secrets belong here, not in the repository.</p>
+
+<h2 id="database">Database</h2>
+<p>A function has no network of its own, so it asks the host. Put a Postgres URL in <code>DATABASE_URL</code> on the Environment tab - a Barua database in the same region answers in a few milliseconds, since the function and the database share a box - and call it from your code. The host keeps the connection warm, so a fresh instance per call costs nothing extra; each call shows its queries in the activity log.</p>
+<p class="cap">Rust - the <a href="https://github.com/nassdaq/barua-fn-rs">barua-fn</a> crate</p>
+<pre><code>[dependencies]
+barua-fn = { git = "https://github.com/nassdaq/barua-fn-rs" }
+
+use barua_fn::{execute, query};
+use serde_json::json;
+
+execute("create table if not exists visits (who text, at timestamptz default now())", &amp;[])?;
+execute("insert into visits (who) values ($1)", &amp;[json!("Asha")])?;
+let rows = query("select count(*)::int as n from visits", &amp;[])?;</code></pre>
+<p class="note">Any statement works - <code>SELECT</code>, <code>INSERT … RETURNING</code>, migrations - with <code>$1</code> parameters. Rows come back as JSON objects keyed by column. A worked example lives in <a href="https://github.com/nassdaq/hello-barua-fn/tree/main/db">hello-barua-fn/db</a>: deploy it with the folder set to <code>db</code>. Go support for the same host call is next.</p>
 
 <h2 id="logs">Logs</h2>
 <p>Two kinds. The <strong>build log</strong> is everything the compiler said, kept with the deployment. The <strong>call log</strong> records each request: when, status, how long, exit code, bytes in and out, and anything the function wrote to stderr — so a failing call explains itself.</p>

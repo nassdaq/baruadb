@@ -147,10 +147,10 @@ cargo build --release --target wasm32-wasip1
 <li><strong>Deploy.</strong> <code>PUT</code> the module under a name you choose:
 <pre><code>curl -X PUT -H "Authorization: Bearer $BARUA_FN_KEY" \
      --data-binary @your-fn.wasm \
-     https://fn.pg.barua.app/fn/score</code></pre></li>
+     https://fn.pg.barua.app:8443/fn/score</code></pre></li>
 <li><strong>Run.</strong> <code>POST</code> the input; the body back is exactly what your function wrote:
 <pre><code>curl -X POST -H "Authorization: Bearer $BARUA_FN_KEY" \
-     --data '42' https://fn.pg.barua.app/fn/score
+     --data '42' https://fn.pg.barua.app:8443/fn/score
 # {"fib":267914296}   ·   see the x-fn-ms header for how long it took</code></pre></li>
 </ol>
 
@@ -176,7 +176,7 @@ fn main() {
 <h2 id="deploy">Deploy</h2>
 <p>A deploy is one request: <code>PUT /fn/:id</code> with the compiled module as the body. The name <code>:id</code> is yours to pick (<code>[a-z0-9][a-z0-9_-]</code>, up to 64 characters); <code>PUT</code> again to the same name to replace it, and the next call runs the new code.</p>
 <pre><code>curl -X PUT -H "Authorization: Bearer $BARUA_FN_KEY" \
-     --data-binary @fn.wasm  https://fn.pg.barua.app/fn/score
+     --data-binary @fn.wasm  https://fn.pg.barua.app:8443/fn/score
 # {"id":"score","size":38180,"deployed":true}</code></pre>
 
 <h2 id="invoke">Invoke</h2>
@@ -186,7 +186,7 @@ fn main() {
 <li><code>x-fn-exit</code> — the exit code; <code>0</code> is success.</li>
 </ul>
 <pre><code>curl -X POST -H "Authorization: Bearer $BARUA_FN_KEY" \
-     --data '45' https://fn.pg.barua.app/fn/score
+     --data '45' https://fn.pg.barua.app:8443/fn/score
 # {"fib":1134903170}</code></pre>
 <p class="note">Every call gets a <em>fresh</em> instance: fresh memory, nothing carried over from the last call or from anyone else's. A function cannot see another's data because, by the time the next one runs, the last one no longer exists.</p>
 
@@ -223,7 +223,7 @@ cargo build --release --target wasm32-wasip1</code></pre>
 <p class="note"><em>Cold run</em> is a fresh sandbox instantiated and executed once — what a scale-to-zero call costs. For comparison a container's cold start is one to three seconds. The size gap is the whole story about efficient languages: Rust bundles nothing, Go bundles its runtime, so Rust starts about six times faster and packs about three times denser.</p>
 
 <h2 id="api">API reference</h2>
-<p>The endpoint is the one the console gives you (<code>https://fn.pg.barua.app</code> in early access). Every <code>/fn</code> route takes <code>Authorization: Bearer &lt;your key&gt;</code>.</p>
+<p>The endpoint is the one the console gives you (<code>https://fn.pg.barua.app:8443</code> in early access). Every <code>/fn</code> route takes <code>Authorization: Bearer &lt;your key&gt;</code>.</p>
 <table>
 <tr><th>Method and path</th><th>Body</th><th>Does</th></tr>
 <tr><td><code>PUT /fn/:id</code></td><td>the <code>.wasm</code> module</td><td>deploy or replace it → <code>201</code></td></tr>

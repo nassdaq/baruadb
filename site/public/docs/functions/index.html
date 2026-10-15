@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barua Functions — docs · your code, run next to your data</title>
+<meta name="description" content="Deploy a function written in Rust, Go, or anything that compiles to WebAssembly. Barua runs it sandboxed, next to your data, scale-to-zero — one call to deploy, one call to run, billed by the millisecond. Quickstart, languages, API reference.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://barua.app/docs/functions/">
+<meta property="og:title" content="Barua Functions — docs">
+<meta property="og:description" content="Your code in Rust, Go or JavaScript, run next to your data, scale-to-zero, billed by the millisecond.">
+<meta property="og:image" content="https://barua.app/og.png">
+<meta name="theme-color" content="#09090a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f3f1" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 253 253'%3E%3Cpath fill='%2326B2B3' d='M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --accent:#26B2B3; --ink:#fff; --bg:#09090a;
+  --edge:rgba(255,255,255,.14); --hair:rgba(255,255,255,.08);
+  --dim:rgba(255,255,255,.56); --faint:rgba(255,255,255,.34);
+  --code:rgba(255,255,255,.045); --mark:rgba(38,178,179,.14);
+}
+@media (prefers-color-scheme: light){
+  :root{ --accent:#186F70; --ink:#0b0b0c; --bg:#f3f3f1;
+    --edge:rgba(0,0,0,.16); --hair:rgba(0,0,0,.09);
+    --dim:rgba(0,0,0,.58); --faint:rgba(0,0,0,.38);
+    --code:rgba(0,0,0,.045); --mark:rgba(24,111,112,.12); }
+}
+*{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; scroll-padding-top:84px; }
+body{ margin:0; background:var(--bg); color:var(--ink);
+  font:400 16px/1.6 "Outfit", ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing:-.005em; -webkit-font-smoothing:antialiased; }
+a{ color:inherit; text-decoration:none; }
+a:hover{ color:var(--accent); }
+:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
+
+.top{ position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--hair); }
+.top .in{ max-width:1180px; margin:0 auto; padding:0 24px; height:60px; display:flex; align-items:center; gap:18px; }
+.brand{ display:inline-flex; align-items:center; gap:10px; font-weight:500; }
+.brand svg{ width:22px; height:22px; }
+.crumb{ color:var(--faint); }
+.top .right{ margin-left:auto; display:flex; gap:22px; color:var(--dim); font-size:15px; }
+
+.wrap{ max-width:1180px; margin:0 auto; padding:0 24px; display:grid; grid-template-columns:232px minmax(0,1fr); gap:56px; }
+aside{ position:sticky; top:60px; align-self:start; height:calc(100vh - 60px); overflow:auto; padding:36px 0 40px; font-size:14px; }
+aside .g{ color:var(--faint); font-size:12px; letter-spacing:.08em; text-transform:uppercase; margin:22px 0 8px; }
+aside .g:first-child{ margin-top:0; }
+aside a{ display:block; padding:4px 0; color:var(--dim); }
+aside a.sub{ padding-left:14px; font-size:13px; }
+aside a:hover{ color:var(--ink); }
+main{ padding:48px 0 120px; max-width:720px; }
+
+h1{ font-size:clamp(2.1rem, 4vw, 3rem); line-height:1.08; font-weight:400; letter-spacing:-.02em; margin:0 0 10px; }
+.lede{ font-size:1.2rem; color:var(--dim); margin:0 0 34px; font-weight:300; }
+h2{ font-size:1.55rem; font-weight:400; letter-spacing:-.015em; margin:72px 0 14px; padding-top:22px; border-top:1px solid var(--hair); }
+h2:first-of-type{ border-top:0; padding-top:0; margin-top:0; }
+h3{ font-size:1.1rem; font-weight:500; margin:34px 0 8px; }
+p, li{ color:var(--ink); }
+p.note, .note li{ color:var(--dim); }
+ul{ padding-left:20px; } li{ margin:4px 0; }
+hr{ border:0; border-top:1px solid var(--hair); margin:32px 0; }
+code{ font:400 .88em/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--code); padding:.1em .38em; border-radius:4px; }
+pre{ background:var(--code); border:1px solid var(--hair); border-radius:8px; padding:14px 16px; overflow:auto; margin:12px 0 18px; }
+pre code{ background:none; padding:0; font-size:.86rem; line-height:1.55; }
+.cap{ font-size:12px; color:var(--faint); letter-spacing:.06em; text-transform:uppercase; margin:18px 0 -6px; }
+table{ border-collapse:collapse; width:100%; margin:12px 0 22px; font-size:.95rem; }
+th{ text-align:left; font-weight:500; color:var(--dim); font-size:.85rem; padding:8px 10px 8px 0; border-bottom:1px solid var(--edge); }
+td{ padding:9px 10px 9px 0; border-bottom:1px solid var(--hair); vertical-align:top; }
+td code{ white-space:nowrap; }
+.k{ color:var(--accent); }
+mark{ background:var(--mark); color:inherit; padding:.05em .3em; border-radius:3px; }
+.steps{ counter-reset:s; list-style:none; padding:0; }
+.steps li{ counter-increment:s; position:relative; padding-left:38px; margin:14px 0; }
+.steps li::before{ content:counter(s); position:absolute; left:0; top:1px; width:24px; height:24px; border:1px solid var(--edge); border-radius:50%; font-size:12px; display:grid; place-items:center; color:var(--dim); }
+.tag{ display:inline-block; font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--accent); border:1px solid var(--edge); border-radius:999px; padding:3px 10px; margin:0 0 20px; }
+.foot{ border-top:1px solid var(--hair); margin-top:80px; padding-top:22px; color:var(--faint); font-size:13px; display:flex; gap:22px; flex-wrap:wrap; }
+@media (max-width: 980px){
+  .wrap{ grid-template-columns:1fr; gap:0; }
+  aside{ position:static; height:auto; padding:24px 0 0; border-bottom:1px solid var(--hair); }
+  aside .g{ display:inline-block; margin:10px 18px 4px 0; }
+  aside a{ display:inline-block; margin-right:16px; }
+  aside a.sub{ padding-left:0; }
+  main{ padding-top:32px; }
+}
+</style>
+</head>
+<body>
+
+<div class="top"><div class="in">
+  <a class="brand" href="/" aria-label="Barua home">
+    <svg viewBox="0 0 253 253" aria-hidden="true"><path fill="#26B2B3" d="M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z'/></svg>
+    Barua
+  </a>
+  <span class="crumb">/</span><span>Docs</span><span class="crumb">/</span><span>Functions</span>
+  <nav class="right"><a href="/docs/tasks/">Tasks</a><a href="https://console.barua.app">Console</a></nav>
+</div></div>
+
+<div class="wrap">
+<aside aria-label="On this page">
+  <div class="g">Start</div>
+  <a href="#overview">Overview</a>
+  <a href="#quickstart">Quickstart</a>
+  <a href="#write">Write a function</a>
+  <div class="g">Deploy and run</div>
+  <a href="#deploy">Deploy</a>
+  <a href="#invoke">Invoke</a>
+  <a href="#languages">Languages</a>
+  <a class="sub" href="#rust">Rust</a>
+  <a class="sub" href="#go">Go</a>
+  <a class="sub" href="#any">Any WASM language</a>
+  <div class="g">More</div>
+  <a href="#sandbox">How it is sandboxed</a>
+  <a href="#speed">Speed, measured</a>
+  <a href="#api">API reference</a>
+  <a href="#limits">Limits</a>
+  <a href="#troubleshooting">Troubleshooting</a>
+</aside>
+
+<main>
+<span class="tag">Early access</span>
+<h1>Barua Functions</h1>
+<p class="lede">Your own code — in Rust, Go, or anything that compiles to WebAssembly — run sandboxed, next to your data, and asleep when nobody is calling it. One call to deploy a function, one call to run it, billed by the millisecond it actually spends working.</p>
+
+<h2 id="overview">Overview</h2>
+<p>Sometimes the work does not belong in your app and does not belong in the database either: validate a webhook, score a row, reshape a payload, do a burst of real arithmetic. Renting a server for that means paying for a machine that sits idle between calls. A function is the opposite — it exists only while it runs.</p>
+<p>The unit is a <strong>WebAssembly instance</strong>, not a container: a few kilobytes, started in well under a millisecond, thousands to a host, and nothing at all while idle. A container cold-starts in one to three seconds; a Rust function here cold-starts in about <strong>three milliseconds</strong>. That is the whole reason this tier can be cheap.</p>
+<p>The contract is one sentence: <strong>a function reads its input on stdin and writes its result on stdout.</strong> Every language's standard library already speaks it, so there is no framework to learn and nothing to import.</p>
+<table>
+<tr><th>You do</th><th>Barua does</th></tr>
+<tr><td><code>PUT</code> a compiled <code>.wasm</code> module</td><td>stores it, ready to run — <strong>deployed</strong></td></tr>
+<tr><td><code>POST</code> an input to it</td><td>runs it in a fresh sandbox, returns what it wrote to stdout</td></tr>
+<tr><td>nothing, between calls</td><td>nothing — the function does not exist until the next request, and costs nothing</td></tr>
+</table>
+
+<h2 id="quickstart">Quickstart</h2>
+<ol class="steps">
+<li><strong>Switch it on.</strong> Functions is enabled per database, like <a href="/docs/tasks/">Tasks</a>. Turn it on for a database and you get an endpoint and a key — save the key as <code>BARUA_FN_KEY</code> in your environment. (Early access: ask us to switch it on from the <a href="https://console.barua.app">console</a>.)</li>
+<li><strong>Write and compile.</strong> A function reads stdin and writes stdout. In Rust, build it for the WebAssembly target:
+<pre><code>rustup target add wasm32-wasip1
+cargo build --release --target wasm32-wasip1
+# → target/wasm32-wasip1/release/your-fn.wasm  (tens of kilobytes)</code></pre></li>
+<li><strong>Deploy.</strong> <code>PUT</code> the module under a name you choose:
+<pre><code>curl -X PUT -H "Authorization: Bearer $BARUA_FN_KEY" \
+     --data-binary @your-fn.wasm \
+     https://fn.pg.barua.app/fn/score</code></pre></li>
+<li><strong>Run.</strong> <code>POST</code> the input; the body back is exactly what your function wrote:
+<pre><code>curl -X POST -H "Authorization: Bearer $BARUA_FN_KEY" \
+     --data '42' https://fn.pg.barua.app/fn/score
+# {"fib":267914296}   ·   see the x-fn-ms header for how long it took</code></pre></li>
+</ol>
+
+<h2 id="write">Write a function</h2>
+<p>Read stdin, write stdout. That is the entire interface — the same one <code>cat</code> uses. Here is a real function (a little arithmetic) in two languages; both run through the identical sandbox.</p>
+<p class="cap">Rust</p>
+<pre><code>use std::io::{self, Read, Write};
+
+fn main() {
+    let mut s = String::new();
+    io::stdin().read_to_string(&amp;mut s).ok();
+    let n: u64 = s.trim().parse().unwrap_or(10);
+    write!(io::stdout(), "{{\"fib\":{}}}", fib(n)).ok();
+}</code></pre>
+<p class="cap">Go &mdash; <code>GOOS=wasip1 GOARCH=wasm go build -o fn.wasm .</code></p>
+<pre><code>func main() {
+    data, _ := io.ReadAll(os.Stdin)
+    n, _ := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+    os.Stdout.WriteString(fmt.Sprintf("{\"fib\":%d}", fib(n)))
+}</code></pre>
+<p class="note">Your input arrives on stdin as whatever you <code>POST</code> — a number, a line of text, a JSON document. Parse it, do the work, print the answer. Anything written to stderr comes back to you on failure, so it is the place for a log line.</p>
+
+<h2 id="deploy">Deploy</h2>
+<p>A deploy is one request: <code>PUT /fn/:id</code> with the compiled module as the body. The name <code>:id</code> is yours to pick (<code>[a-z0-9][a-z0-9_-]</code>, up to 64 characters); <code>PUT</code> again to the same name to replace it, and the next call runs the new code.</p>
+<pre><code>curl -X PUT -H "Authorization: Bearer $BARUA_FN_KEY" \
+     --data-binary @fn.wasm  https://fn.pg.barua.app/fn/score
+# {"id":"score","size":38180,"deployed":true}</code></pre>
+
+<h2 id="invoke">Invoke</h2>
+<p><code>POST /fn/:id</code> with your input as the body. The response body is your function's stdout, verbatim, with two headers worth reading:</p>
+<ul>
+<li><code>x-fn-ms</code> — the wall-clock milliseconds the run took, the number you are billed on.</li>
+<li><code>x-fn-exit</code> — the exit code; <code>0</code> is success.</li>
+</ul>
+<pre><code>curl -X POST -H "Authorization: Bearer $BARUA_FN_KEY" \
+     --data '45' https://fn.pg.barua.app/fn/score
+# {"fib":1134903170}</code></pre>
+<p class="note">Every call gets a <em>fresh</em> instance: fresh memory, nothing carried over from the last call or from anyone else's. A function cannot see another's data because, by the time the next one runs, the last one no longer exists.</p>
+
+<h2 id="languages">Languages</h2>
+<p>Anything that compiles to <code>wasm32-wasip1</code> runs unchanged. The two ends of the trade-off:</p>
+
+<h3 id="rust">Rust</h3>
+<p>The dense end. A Rust function is tens of kilobytes because it bundles nothing but your code, and it starts in milliseconds. Best for the hot path — the function you call on every request.</p>
+<pre><code>rustup target add wasm32-wasip1
+cargo build --release --target wasm32-wasip1</code></pre>
+
+<h3 id="go">Go</h3>
+<p>The familiar end. Go 1.25's own compiler targets WebAssembly, no TinyGo required. A Go module is larger (it ships its runtime and garbage collector) and starts a little slower, which is the honest cost of its convenience.</p>
+<pre><code>GOOS=wasip1 GOARCH=wasm go build -o fn.wasm .</code></pre>
+
+<h3 id="any">Any WASM language</h3>
+<p>Zig, C, AssemblyScript, TinyGo — if the toolchain can emit <code>wasm32-wasip1</code> and the program reads stdin and writes stdout, it runs here with no change on our side. The sandbox does not know or care which language wrote the module.</p>
+
+<h2 id="sandbox">How it is sandboxed</h2>
+<p>A function can touch its input and its output, and nothing else. It has no network, no filesystem, no view of the host or of any other function — a WebAssembly module only reaches what it is explicitly handed, and a function is handed stdin and stdout.</p>
+<ul>
+<li><strong>Fresh per call.</strong> Each invocation is a new instance with its own memory; state never leaks from one run to the next.</li>
+<li><strong>Isolated.</strong> A function runs on its own thread with its own memory, so a crash or a hang takes down that one call, never the host or a neighbour.</li>
+<li><strong>Bounded.</strong> A function that runs past its time limit is stopped and the call returns an error — one runaway loop cannot hold the service.</li>
+</ul>
+
+<h2 id="speed">Speed, measured</h2>
+<p>Measured on one thread, deploying and calling over the internet — not a lab figure:</p>
+<table>
+<tr><th>Language</th><th>Module</th><th>Cold run</th><th>Warm run</th><th>Throughput</th></tr>
+<tr><td><strong>Rust</strong></td><td><strong>38 KB</strong></td><td><strong>3.2 ms</strong></td><td>0.245 ms</td><td>1,545 / s</td></tr>
+<tr><td>Go</td><td>2.1 MB</td><td>11.5 ms</td><td>1.5 ms</td><td>509 / s</td></tr>
+</table>
+<p class="note"><em>Cold run</em> is a fresh sandbox instantiated and executed once — what a scale-to-zero call costs. For comparison a container's cold start is one to three seconds. The size gap is the whole story about efficient languages: Rust bundles nothing, Go bundles its runtime, so Rust starts about six times faster and packs about three times denser.</p>
+
+<h2 id="api">API reference</h2>
+<p>The endpoint is the one the console gives you (<code>https://fn.pg.barua.app</code> in early access). Every <code>/fn</code> route takes <code>Authorization: Bearer &lt;your key&gt;</code>.</p>
+<table>
+<tr><th>Method and path</th><th>Body</th><th>Does</th></tr>
+<tr><td><code>PUT /fn/:id</code></td><td>the <code>.wasm</code> module</td><td>deploy or replace it → <code>201</code></td></tr>
+<tr><td><code>POST /fn/:id</code></td><td>the input, any bytes</td><td>run it; returns stdout, with <code>x-fn-ms</code> and <code>x-fn-exit</code></td></tr>
+<tr><td><code>GET /fn/:id</code></td><td>&mdash;</td><td>whether it is deployed and warm</td></tr>
+</table>
+<p>A run that fails answers <code>500</code> with <code>{ "error": … }</code> and whatever the function wrote to stderr; a run that exceeds the time limit answers <code>504</code>; a call without a valid key answers <code>401</code>.</p>
+
+<h2 id="limits">Limits</h2>
+<ul>
+<li>Module up to <strong>32 MB</strong>; input up to <strong>256 KB</strong>.</li>
+<li>A call has <strong>5 seconds</strong> to finish; past that it is stopped and returns <code>504</code>.</li>
+<li>A function sees <strong>no network and no filesystem</strong> in early access — input in, output out.</li>
+<li>The function name is <code>[a-z0-9][a-z0-9_-]</code>, up to 64 characters.</li>
+</ul>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p><strong><code>401</code> on every call.</strong> The <code>Authorization: Bearer</code> header is missing or the key is wrong. Deploy and invoke both need it; only health does not.</p>
+<p><strong><code>400 not a WebAssembly module</code>.</strong> The body you <code>PUT</code> was not a <code>.wasm</code> file. Check you sent the compiled artifact (<code>target/wasm32-wasip1/release/*.wasm</code>, or the <code>-o fn.wasm</code> from Go) with <code>--data-binary</code>, not <code>--data</code>, which mangles bytes.</p>
+<p><strong><code>504</code>, timed out.</strong> The run took longer than five seconds. For heavy work, split it — or reach for the container tier, which exists for jobs a millisecond-billed function should not hold.</p>
+<p><strong>Big module, slow start.</strong> Usually a Go build. If the function is on your hot path, the same logic in Rust or Zig is a fraction of the size and starts in milliseconds.</p>
+
+<div class="foot">
+  <span>Barua Functions · <a href="https://console.barua.app">Console</a> · <a href="/docs/tasks/">Tasks</a></span>
+  <span>Early access — ask us to switch it on for your database</span>
+  <span>Built in Dar es Salaam</span>
+</div>
+</main>
+</div>
+</body>
+</html>

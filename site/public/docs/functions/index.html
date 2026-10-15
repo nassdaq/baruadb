@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Barua Functions — docs · your code, run next to your data</title>
-<meta name="description" content="Deploy a function written in Rust, Go, or anything that compiles to WebAssembly. Barua runs it sandboxed, next to your data, scale-to-zero — one call to deploy, one call to run, billed by the millisecond. Quickstart, languages, API reference.">
+<title>Barua Functions — how it works · paste a repository, get a URL</title>
+<meta name="description" content="Paste a GitHub repository written in Rust or Go. Barua builds it to WebAssembly and runs it next to your data. You get a URL, logs, and a place for your environment. Nothing to install.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://barua.app/docs/functions/">
-<meta property="og:title" content="Barua Functions — docs">
-<meta property="og:description" content="Your code in Rust, Go or JavaScript, run next to your data, scale-to-zero, billed by the millisecond.">
+<meta property="og:title" content="Barua Functions — how it works">
+<meta property="og:description" content="Paste a GitHub repository. Get a URL, logs, and a place for your environment.">
 <meta property="og:image" content="https://barua.app/og.png">
 <meta name="theme-color" content="#09090a" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f3f3f1" media="(prefers-color-scheme: light)">
@@ -93,162 +93,96 @@ mark{ background:var(--mark); color:inherit; padding:.05em .3em; border-radius:3
 
 <div class="top"><div class="in">
   <a class="brand" href="/" aria-label="Barua home">
-    <svg viewBox="0 0 253 253" aria-hidden="true"><path fill="#26B2B3" d="M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z'/></svg>
+    <svg viewBox="0 0 253 253" aria-hidden="true"><path fill="#26B2B3" d="M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z"/></svg>
     Barua
   </a>
   <span class="crumb">/</span><span>Docs</span><span class="crumb">/</span><span>Functions</span>
-  <nav class="right"><a href="/docs/tasks/">Tasks</a><a href="https://console.barua.app">Console</a></nav>
+  <nav class="right"><a href="https://fn.barua.app">Open Functions</a><a href="/docs/tasks/">Tasks</a><a href="https://console.barua.app">Console</a></nav>
 </div></div>
 
 <div class="wrap">
 <aside aria-label="On this page">
-  <div class="g">Start</div>
-  <a href="#overview">Overview</a>
-  <a href="#quickstart">Quickstart</a>
-  <a href="#write">Write a function</a>
-  <div class="g">Deploy and run</div>
+  <div class="g">Functions</div>
   <a href="#deploy">Deploy</a>
-  <a href="#invoke">Invoke</a>
-  <a href="#languages">Languages</a>
-  <a class="sub" href="#rust">Rust</a>
-  <a class="sub" href="#go">Go</a>
-  <a class="sub" href="#any">Any WASM language</a>
+  <a href="#contract">What a function is</a>
+  <a href="#url">Your URL</a>
+  <a href="#env">Environment</a>
+  <a href="#logs">Logs</a>
+  <a href="#redeploy">Changing it</a>
   <div class="g">More</div>
-  <a href="#sandbox">How it is sandboxed</a>
-  <a href="#speed">Speed, measured</a>
-  <a href="#api">API reference</a>
   <a href="#limits">Limits</a>
-  <a href="#troubleshooting">Troubleshooting</a>
+  <a href="#access">Access</a>
 </aside>
 
 <main>
 <span class="tag">Early access</span>
 <h1>Barua Functions</h1>
-<p class="lede">Your own code — in Rust, Go, or anything that compiles to WebAssembly — run sandboxed, next to your data, and asleep when nobody is calling it. One call to deploy a function, one call to run it, billed by the millisecond it actually spends working.</p>
+<p class="lede">Paste a GitHub repository written in Rust or Go. We build it to WebAssembly and run it next to your data. You get a URL, logs, and a place for your environment. Nothing to install.</p>
 
-<h2 id="overview">Overview</h2>
-<p>Sometimes the work does not belong in your app and does not belong in the database either: validate a webhook, score a row, reshape a payload, do a burst of real arithmetic. Renting a server for that means paying for a machine that sits idle between calls. A function is the opposite — it exists only while it runs.</p>
-<p>The unit is a <strong>WebAssembly instance</strong>, not a container: a few kilobytes, started in well under a millisecond, thousands to a host, and nothing at all while idle. A container cold-starts in one to three seconds; a Rust function here cold-starts in about <strong>three milliseconds</strong>. That is the whole reason this tier can be cheap.</p>
-<p>The contract is one sentence: <strong>a function reads its input on stdin and writes its result on stdout.</strong> Every language's standard library already speaks it, so there is no framework to learn and nothing to import.</p>
-<table>
-<tr><th>You do</th><th>Barua does</th></tr>
-<tr><td><code>PUT</code> a compiled <code>.wasm</code> module</td><td>stores it, ready to run — <strong>deployed</strong></td></tr>
-<tr><td><code>POST</code> an input to it</td><td>runs it in a fresh sandbox, returns what it wrote to stdout</td></tr>
-<tr><td>nothing, between calls</td><td>nothing — the function does not exist until the next request, and costs nothing</td></tr>
-</table>
+<h2 id="deploy">Deploy</h2>
+<p>Open <a href="https://fn.barua.app">fn.barua.app</a>, paste the repository's URL, press <strong>Deploy</strong>. The build log appears as it happens — the same output you would see in your own terminal — and when it finishes the function is live at <code>https://fn.barua.app/&lt;name&gt;</code>.</p>
+<ul>
+<li><strong>Name</strong> — optional; taken from the repository. Deploying again under the same name replaces the function.</li>
+<li><strong>Folder</strong> — if the function lives in a sub-folder (a monorepo, or one repository holding several functions).</li>
+<li><strong>Branch</strong> — the default branch unless you say otherwise.</li>
+<li><strong>Environment</strong> — <code>KEY=value</code> lines. Your code reads them as ordinary environment variables.</li>
+</ul>
+<p class="note">Try it with <a href="https://github.com/nassdaq/hello-barua-fn">nassdaq/hello-barua-fn</a>: Rust at the root, the same function in Go under <code>go/</code>. On our box it builds in about four seconds.</p>
 
-<h2 id="quickstart">Quickstart</h2>
-<ol class="steps">
-<li><strong>Switch it on.</strong> Functions is enabled per database, like <a href="/docs/tasks/">Tasks</a>. Turn it on for a database and you get an endpoint and a key — save the key as <code>BARUA_FN_KEY</code> in your environment. (Early access: ask us to switch it on from the <a href="https://console.barua.app">console</a>.)</li>
-<li><strong>Write and compile.</strong> A function reads stdin and writes stdout. In Rust, build it for the WebAssembly target:
-<pre><code>rustup target add wasm32-wasip1
-cargo build --release --target wasm32-wasip1
-# → target/wasm32-wasip1/release/your-fn.wasm  (tens of kilobytes)</code></pre></li>
-<li><strong>Deploy.</strong> <code>PUT</code> the module under a name you choose:
-<pre><code>curl -X PUT -H "Authorization: Bearer $BARUA_FN_KEY" \
-     --data-binary @your-fn.wasm \
-     https://fn.pg.barua.app:8443/fn/score</code></pre></li>
-<li><strong>Run.</strong> <code>POST</code> the input; the body back is exactly what your function wrote:
-<pre><code>curl -X POST -H "Authorization: Bearer $BARUA_FN_KEY" \
-     --data '42' https://fn.pg.barua.app:8443/fn/score
-# {"fib":267914296}   ·   see the x-fn-ms header for how long it took</code></pre></li>
-</ol>
-
-<h2 id="write">Write a function</h2>
-<p>Read stdin, write stdout. That is the entire interface — the same one <code>cat</code> uses. Here is a real function (a little arithmetic) in two languages; both run through the identical sandbox.</p>
+<h2 id="contract">What a function is</h2>
+<p>A program that reads its input on stdin and prints its answer on stdout. That is the whole contract — no framework, no SDK, no special types. The body of the request is the input; whatever you print is the response.</p>
 <p class="cap">Rust</p>
 <pre><code>use std::io::{self, Read, Write};
 
 fn main() {
-    let mut s = String::new();
-    io::stdin().read_to_string(&amp;mut s).ok();
-    let n: u64 = s.trim().parse().unwrap_or(10);
-    write!(io::stdout(), "{{\"fib\":{}}}", fib(n)).ok();
+    let mut input = String::new();
+    io::stdin().read_to_string(&amp;mut input).ok();
+    let greeting = std::env::var("GREETING").unwrap_or("Hello".into());
+    write!(io::stdout(), "{{\"message\":\"{}, {}!\"}}", greeting, input.trim()).ok();
 }</code></pre>
-<p class="cap">Go &mdash; <code>GOOS=wasip1 GOARCH=wasm go build -o fn.wasm .</code></p>
+<p class="cap">Go</p>
 <pre><code>func main() {
-    data, _ := io.ReadAll(os.Stdin)
-    n, _ := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
-    os.Stdout.WriteString(fmt.Sprintf("{\"fib\":%d}", fib(n)))
+    input, _ := io.ReadAll(os.Stdin)
+    greeting := cmp.Or(os.Getenv("GREETING"), "Hello")
+    fmt.Printf("{\"message\":\"%s, %s!\"}", greeting, strings.TrimSpace(string(input)))
 }</code></pre>
-<p class="note">Your input arrives on stdin as whatever you <code>POST</code> — a number, a line of text, a JSON document. Parse it, do the work, print the answer. Anything written to stderr comes back to you on failure, so it is the place for a log line.</p>
+<p class="note">We tell the language from the repository: a <code>Cargo.toml</code> is Rust, a <code>go.mod</code> is Go. No toolchain on your side, and no <code>.wasm</code> to look at — the build is ours.</p>
 
-<h2 id="deploy">Deploy</h2>
-<p>A deploy is one request: <code>PUT /fn/:id</code> with the compiled module as the body. The name <code>:id</code> is yours to pick (<code>[a-z0-9][a-z0-9_-]</code>, up to 64 characters); <code>PUT</code> again to the same name to replace it, and the next call runs the new code.</p>
-<pre><code>curl -X PUT -H "Authorization: Bearer $BARUA_FN_KEY" \
-     --data-binary @fn.wasm  https://fn.pg.barua.app:8443/fn/score
-# {"id":"score","size":38180,"deployed":true}</code></pre>
-
-<h2 id="invoke">Invoke</h2>
-<p><code>POST /fn/:id</code> with your input as the body. The response body is your function's stdout, verbatim, with two headers worth reading:</p>
+<h2 id="url">Your URL</h2>
+<pre><code>curl -X POST https://fn.barua.app/hello-barua-fn --data '{"name": "Asha"}'
+# {"message":"Hello, Asha!","lang":"rust","greeting_from_env":false}</code></pre>
 <ul>
-<li><code>x-fn-ms</code> — the wall-clock milliseconds the run took, the number you are billed on.</li>
-<li><code>x-fn-exit</code> — the exit code; <code>0</code> is success.</li>
-</ul>
-<pre><code>curl -X POST -H "Authorization: Bearer $BARUA_FN_KEY" \
-     --data '45' https://fn.pg.barua.app:8443/fn/score
-# {"fib":1134903170}</code></pre>
-<p class="note">Every call gets a <em>fresh</em> instance: fresh memory, nothing carried over from the last call or from anyone else's. A function cannot see another's data because, by the time the next one runs, the last one no longer exists.</p>
-
-<h2 id="languages">Languages</h2>
-<p>Anything that compiles to <code>wasm32-wasip1</code> runs unchanged. The two ends of the trade-off:</p>
-
-<h3 id="rust">Rust</h3>
-<p>The dense end. A Rust function is tens of kilobytes because it bundles nothing but your code, and it starts in milliseconds. Best for the hot path — the function you call on every request.</p>
-<pre><code>rustup target add wasm32-wasip1
-cargo build --release --target wasm32-wasip1</code></pre>
-
-<h3 id="go">Go</h3>
-<p>The familiar end. Go 1.25's own compiler targets WebAssembly, no TinyGo required. A Go module is larger (it ships its runtime and garbage collector) and starts a little slower, which is the honest cost of its convenience.</p>
-<pre><code>GOOS=wasip1 GOARCH=wasm go build -o fn.wasm .</code></pre>
-
-<h3 id="any">Any WASM language</h3>
-<p>Zig, C, AssemblyScript, TinyGo — if the toolchain can emit <code>wasm32-wasip1</code> and the program reads stdin and writes stdout, it runs here with no change on our side. The sandbox does not know or care which language wrote the module.</p>
-
-<h2 id="sandbox">How it is sandboxed</h2>
-<p>A function can touch its input and its output, and nothing else. It has no network, no filesystem, no view of the host or of any other function — a WebAssembly module only reaches what it is explicitly handed, and a function is handed stdin and stdout.</p>
-<ul>
-<li><strong>Fresh per call.</strong> Each invocation is a new instance with its own memory; state never leaks from one run to the next.</li>
-<li><strong>Isolated.</strong> A function runs on its own thread with its own memory, so a crash or a hang takes down that one call, never the host or a neighbour.</li>
-<li><strong>Bounded.</strong> A function that runs past its time limit is stopped and the call returns an error — one runaway loop cannot hold the service.</li>
+<li><strong>POST</strong> the input as the body. A <strong>GET</strong> with no body runs the function with empty input.</li>
+<li>If your function prints JSON the response is <code>application/json</code>; otherwise plain text.</li>
+<li><code>x-fn-ms</code> on the response is how long the run took; <code>x-fn-exit</code> is the exit code.</li>
+<li>Browsers can call it directly — the URL answers cross-origin requests.</li>
+<li>Every call is a fresh sandbox: fresh memory, nothing carried over from the last call or from anyone else's.</li>
 </ul>
 
-<h2 id="speed">Speed, measured</h2>
-<p>Measured on one thread, deploying and calling over the internet — not a lab figure:</p>
-<table>
-<tr><th>Language</th><th>Module</th><th>Cold run</th><th>Warm run</th><th>Throughput</th></tr>
-<tr><td><strong>Rust</strong></td><td><strong>38 KB</strong></td><td><strong>3.2 ms</strong></td><td>0.245 ms</td><td>1,545 / s</td></tr>
-<tr><td>Go</td><td>2.1 MB</td><td>11.5 ms</td><td>1.5 ms</td><td>509 / s</td></tr>
-</table>
-<p class="note"><em>Cold run</em> is a fresh sandbox instantiated and executed once — what a scale-to-zero call costs. For comparison a container's cold start is one to three seconds. The size gap is the whole story about efficient languages: Rust bundles nothing, Go bundles its runtime, so Rust starts about six times faster and packs about three times denser.</p>
+<h2 id="env">Environment</h2>
+<p>The <strong>Environment</strong> tab holds <code>KEY=value</code> pairs. Save them and the next call sees them — <code>std::env::var</code> in Rust, <code>os.Getenv</code> in Go. Keys and secrets belong here, not in the repository.</p>
 
-<h2 id="api">API reference</h2>
-<p>The endpoint is the one the console gives you (<code>https://fn.pg.barua.app:8443</code> in early access). Every <code>/fn</code> route takes <code>Authorization: Bearer &lt;your key&gt;</code>.</p>
-<table>
-<tr><th>Method and path</th><th>Body</th><th>Does</th></tr>
-<tr><td><code>PUT /fn/:id</code></td><td>the <code>.wasm</code> module</td><td>deploy or replace it → <code>201</code></td></tr>
-<tr><td><code>POST /fn/:id</code></td><td>the input, any bytes</td><td>run it; returns stdout, with <code>x-fn-ms</code> and <code>x-fn-exit</code></td></tr>
-<tr><td><code>GET /fn/:id</code></td><td>&mdash;</td><td>whether it is deployed and warm</td></tr>
-</table>
-<p>A run that fails answers <code>500</code> with <code>{ "error": … }</code> and whatever the function wrote to stderr; a run that exceeds the time limit answers <code>504</code>; a call without a valid key answers <code>401</code>.</p>
+<h2 id="logs">Logs</h2>
+<p>Two kinds. The <strong>build log</strong> is everything the compiler said, kept with the deployment. The <strong>call log</strong> records each request: when, status, how long, exit code, bytes in and out, and anything the function wrote to stderr — so a failing call explains itself.</p>
+
+<h2 id="redeploy">Changing it</h2>
+<p>Push to GitHub, then press <strong>Deploy</strong> again with the same name. The moment the build finishes the URL serves the new code; a failed build never replaces a working function.</p>
 
 <h2 id="limits">Limits</h2>
 <ul>
-<li>Module up to <strong>32 MB</strong>; input up to <strong>256 KB</strong>.</li>
-<li>A call has <strong>5 seconds</strong> to finish; past that it is stopped and returns <code>504</code>.</li>
-<li>A function sees <strong>no network and no filesystem</strong> in early access — input in, output out.</li>
-<li>The function name is <code>[a-z0-9][a-z0-9_-]</code>, up to 64 characters.</li>
+<li>A call has <strong>5 seconds</strong>; past that it is stopped and answers <code>504</code>.</li>
+<li>Input up to <strong>256 KB</strong>; a built module up to <strong>32 MB</strong>.</li>
+<li>A function has no network and no filesystem in early access — input in, output out.</li>
+<li>One build runs at a time; a second deploy waits its turn, usually seconds.</li>
+<li>Public GitHub repositories today. Private repositories and other hosts are next.</li>
 </ul>
 
-<h2 id="troubleshooting">Troubleshooting</h2>
-<p><strong><code>401</code> on every call.</strong> The <code>Authorization: Bearer</code> header is missing or the key is wrong. Deploy and invoke both need it; only health does not.</p>
-<p><strong><code>400 not a WebAssembly module</code>.</strong> The body you <code>PUT</code> was not a <code>.wasm</code> file. Check you sent the compiled artifact (<code>target/wasm32-wasip1/release/*.wasm</code>, or the <code>-o fn.wasm</code> from Go) with <code>--data-binary</code>, not <code>--data</code>, which mangles bytes.</p>
-<p><strong><code>504</code>, timed out.</strong> The run took longer than five seconds. For heavy work, split it — or reach for the container tier, which exists for jobs a millisecond-billed function should not hold.</p>
-<p><strong>Big module, slow start.</strong> Usually a Go build. If the function is on your hot path, the same logic in Rust or Zig is a fraction of the size and starts in milliseconds.</p>
+<h2 id="access">Access</h2>
+<p>Functions is in early access. The page asks for an access key once and keeps it in your browser; ask us for one. The URLs of your functions need no key — they are there to be called by your app and your users.</p>
 
 <div class="foot">
-  <span>Barua Functions · <a href="https://console.barua.app">Console</a> · <a href="/docs/tasks/">Tasks</a></span>
-  <span>Early access — ask us to switch it on for your database</span>
+  <span>Barua Functions · <a href="https://fn.barua.app">fn.barua.app</a> · <a href="/docs/tasks/">Tasks</a></span>
+  <span><a href="https://github.com/nassdaq/hello-barua-fn">Example repository</a></span>
   <span>Built in Dar es Salaam</span>
 </div>
 </main>

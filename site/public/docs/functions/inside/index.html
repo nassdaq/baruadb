@@ -1,3 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inside Barua Functions — what happens to your code, drawn</title>
+<meta name="description" content="What happens when you hand Barua Functions a repository, what runs when a call arrives, what is kept and what is deleted — drawn.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://barua.app/docs/functions/inside/">
+<meta property="og:title" content="Inside Barua Functions">
+<meta property="og:description" content="What happens to your code, what runs when a call arrives, what is kept and what is deleted — drawn.">
+<meta property="og:image" content="https://barua.app/og.png">
+<meta name="theme-color" content="#09090a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f3f1" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 253 253'%3E%3Cpath fill='%2326B2B3' d='M0 126C0 92.6 13.3 60.6 37 37 60.6 13.3 92.6 0 126 0a11.5 11.5 0 0 1 0 23C70.6 23 23 70.6 23 126s47.6 103 103 103c14.2 0 27.9-2.9 40.3-8.1a11.5 11.5 0 1 1 9 21.2A126 126 0 0 1 0 126Zm176.5-115.5a11.5 11.5 0 0 0-9 21.2A103 103 0 0 1 199.7 198a11.5 11.5 0 0 0 16.3 16.3 126 126 0 0 0-39.5-203.8Z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --accent:#26B2B3; --ink:#fff; --bg:#09090a;
+  --edge:rgba(255,255,255,.14); --hair:rgba(255,255,255,.08);
+  --dim:rgba(255,255,255,.56); --faint:rgba(255,255,255,.34);
+  --code:rgba(255,255,255,.045); --mark:rgba(38,178,179,.14);
+}
+@media (prefers-color-scheme: light){
+  :root{ --accent:#186F70; --ink:#0b0b0c; --bg:#f3f3f1;
+    --edge:rgba(0,0,0,.16); --hair:rgba(0,0,0,.09);
+    --dim:rgba(0,0,0,.58); --faint:rgba(0,0,0,.38);
+    --code:rgba(0,0,0,.045); --mark:rgba(24,111,112,.12); }
+}
+*{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; scroll-padding-top:84px; }
+body{ margin:0; background:var(--bg); color:var(--ink);
+  font:400 16px/1.6 "Outfit", ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing:-.005em; -webkit-font-smoothing:antialiased; }
+a{ color:inherit; text-decoration:none; }
+a:hover{ color:var(--accent); }
+:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
+
+.top{ position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--hair); }
+.top .in{ max-width:1180px; margin:0 auto; padding:0 24px; height:60px; display:flex; align-items:center; gap:18px; }
+.brand{ display:inline-flex; align-items:center; gap:10px; font-weight:500; }
+.brand svg{ width:22px; height:22px; }
+.crumb{ color:var(--faint); }
+.top .right{ margin-left:auto; display:flex; gap:22px; color:var(--dim); font-size:15px; }
+
+.wrap{ max-width:1180px; margin:0 auto; padding:0 24px; display:grid; grid-template-columns:232px minmax(0,1fr); gap:56px; }
+aside{ position:sticky; top:60px; align-self:start; height:calc(100vh - 60px); overflow:auto; padding:36px 0 40px; font-size:14px; }
+aside .g{ color:var(--faint); font-size:12px; letter-spacing:.08em; text-transform:uppercase; margin:22px 0 8px; }
+aside .g:first-child{ margin-top:0; }
+aside a{ display:block; padding:4px 0; color:var(--dim); }
+aside a.sub{ padding-left:14px; font-size:13px; }
+aside a:hover{ color:var(--ink); }
+main{ padding:48px 0 120px; max-width:720px; }
+
+h1{ font-size:clamp(2.1rem, 4vw, 3rem); line-height:1.08; font-weight:400; letter-spacing:-.02em; margin:0 0 10px; }
+.lede{ font-size:1.2rem; color:var(--dim); margin:0 0 34px; font-weight:300; }
+h2{ font-size:1.55rem; font-weight:400; letter-spacing:-.015em; margin:72px 0 14px; padding-top:22px; border-top:1px solid var(--hair); }
+h2:first-of-type{ border-top:0; padding-top:0; margin-top:0; }
+h3{ font-size:1.1rem; font-weight:500; margin:34px 0 8px; }
+p, li{ color:var(--ink); }
+p.note, .note li{ color:var(--dim); }
+ul{ padding-left:20px; } li{ margin:4px 0; }
+hr{ border:0; border-top:1px solid var(--hair); margin:32px 0; }
+code{ font:400 .88em/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--code); padding:.1em .38em; border-radius:4px; }
+pre{ background:var(--code); border:1px solid var(--hair); border-radius:8px; padding:14px 16px; overflow:auto; margin:12px 0 18px; }
+pre code{ background:none; padding:0; font-size:.86rem; line-height:1.55; }
+.cap{ font-size:12px; color:var(--faint); letter-spacing:.06em; text-transform:uppercase; margin:18px 0 -6px; }
+table{ border-collapse:collapse; width:100%; margin:12px 0 22px; font-size:.95rem; }
+th{ text-align:left; font-weight:500; color:var(--dim); font-size:.85rem; padding:8px 10px 8px 0; border-bottom:1px solid var(--edge); }
+td{ padding:9px 10px 9px 0; border-bottom:1px solid var(--hair); vertical-align:top; }
+td code{ white-space:nowrap; }
+.k{ color:var(--accent); }
+mark{ background:var(--mark); color:inherit; padding:.05em .3em; border-radius:3px; }
+.steps{ counter-reset:s; list-style:none; padding:0; }
+.steps li{ counter-increment:s; position:relative; padding-left:38px; margin:14px 0; }
+.steps li::before{ content:counter(s); position:absolute; left:0; top:1px; width:24px; height:24px; border:1px solid var(--edge); border-radius:50%; font-size:12px; display:grid; place-items:center; color:var(--dim); }
+.tag{ display:inline-block; font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--accent); border:1px solid var(--edge); border-radius:999px; padding:3px 10px; margin:0 0 20px; }
+.foot{ border-top:1px solid var(--hair); margin-top:80px; padding-top:22px; color:var(--faint); font-size:13px; display:flex; gap:22px; flex-wrap:wrap; }
+@media (max-width: 980px){
+  .wrap{ grid-template-columns:1fr; gap:0; }
+  aside{ position:static; height:auto; padding:24px 0 0; border-bottom:1px solid var(--hair); }
+  aside .g{ display:inline-block; margin:10px 18px 4px 0; }
+  aside a{ display:inline-block; margin-right:16px; }
+  aside a.sub{ padding-left:0; }
+  main{ padding-top:32px; }
+}
+
+/* drawings */
+.draw{ width:100%; height:auto; display:block; margin:14px 0 6px; font-family:inherit; }
+.draw .box{ fill:var(--code); stroke:var(--edge); stroke-width:1; }
+.draw .us{ stroke:var(--accent); stroke-width:1.4; }
+.draw .keep{ stroke:#5fd39b; stroke-width:1.4; }
+.draw .gone{ stroke:#f26d6d; stroke-width:1.4; stroke-dasharray:4 3; }
+.draw .sand{ fill:var(--mark); stroke:var(--accent); stroke-width:1.2; }
+.draw text{ fill:var(--ink); font-size:12.5px; }
+.draw .t{ font-size:13.5px; font-weight:500; }
+.draw .s{ fill:var(--dim); font-size:11.5px; }
+.draw .k{ fill:var(--accent); }
+.draw .g{ fill:#5fd39b; }
+.draw .r{ fill:#f26d6d; }
+.draw .mono{ font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11.5px; }
+.draw .ln{ stroke:var(--dim); stroke-width:1.2; fill:none; marker-end:url(#a); }
+.draw .ln.k{ stroke:var(--accent); }
+.draw .ln.back{ stroke-dasharray:3 3; }
+.draw .hair{ stroke:var(--hair); stroke-width:1; }
+figure{ margin:0; }
+figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
+</style>
+</head>
 <body>
 
 <div class="top"><div class="in">

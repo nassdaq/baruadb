@@ -152,16 +152,16 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
   <text class="t k" x="300" y="68" text-anchor="middle">We build it</text>
   <text class="s" x="300" y="88" text-anchor="middle">clone · cargo / go · ~4–20 s</text>
   <path class="ln" d="M382 75 L428 75"/>
-  <rect class="box keep" x="430" y="40" width="140" height="70" rx="10"/>
-  <text class="t g" x="500" y="68" text-anchor="middle">One module</text>
-  <text class="s mono" x="500" y="88" text-anchor="middle">function.wasm · 60 KB–4 MB</text>
-  <path class="ln" d="M572 75 L618 75"/>
+  <rect class="box keep" x="430" y="40" width="150" height="70" rx="10"/>
+  <text class="t g" x="505" y="68" text-anchor="middle">One module</text>
+  <text class="s mono" x="505" y="88" text-anchor="middle">function.wasm</text>
+  <path class="ln" d="M582 75 L618 75"/>
   <rect class="box" x="620" y="40" width="130" height="70" rx="10"/>
   <text class="t" x="685" y="68" text-anchor="middle">Your URL</text>
   <text class="s mono" x="685" y="88" text-anchor="middle">barua.tz/api/fn/…</text>
   <text class="s" x="90" y="132" text-anchor="middle">yours, read-only</text>
   <text class="s" x="300" y="132" text-anchor="middle">on the box in Tanzania</text>
-  <text class="s" x="500" y="132" text-anchor="middle">kept</text>
+  <text class="s" x="505" y="132" text-anchor="middle">kept · 60 KB to 4 MB</text>
   <text class="s" x="685" y="132" text-anchor="middle">needs one of your API keys</text>
 </svg>
 <figcaption>The whole journey. Press Deploy again and it runs again from the current commit; we never watch or write to the repository.</figcaption>
@@ -196,7 +196,7 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
   <text class="t r" x="426" y="164">Deleted the moment the build ends</text>
   <text class="mono" x="426" y="186">src/      the clone - your code</text>
   <text class="mono" x="426" y="204">target/   every intermediate artifact</text>
-  <text class="s" x="426" y="222">whether it succeeded or failed · not scanned, not indexed, not trained on</text>
+  <text class="s" x="426" y="222">success or failure · never scanned, indexed or trained on</text>
 </svg>
 <figcaption>Your code passes through; it does not stay. Today's builds are public repositories, so we hold no credentials of yours either.</figcaption>
 </figure>
@@ -230,8 +230,9 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
   <text class="s" x="426" y="262">bump this hour's counters · reset the idle clock</text>
   <path class="ln back" d="M408 110 L362 110"/>
   <path class="ln back" d="M188 110 L142 110"/>
-  <text class="s mono" x="275" y="126" text-anchor="middle">stdout · x-fn-ms · x-fn-exit · x-fn-cold</text>
-  <text class="s" x="75" y="126" text-anchor="middle">the answer</text>
+  <text class="s" x="275" y="128" text-anchor="middle">stdout comes back as the body</text>
+  <text class="s mono" x="275" y="144" text-anchor="middle">x-fn-ms · x-fn-exit · x-fn-cold</text>
+  <text class="s" x="75" y="128" text-anchor="middle">the answer</text>
 </svg>
 <figcaption>Two calls never share memory, and a crash ends one call, not a neighbour. The runtime's own token never leaves the server side.</figcaption>
 </figure>
@@ -253,7 +254,7 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
   <text class="s" x="380" y="128" text-anchor="middle">10 minutes of silence → idle sleep</text>
   <path class="ln k" d="M690 52 C 740 10, 760 60, 722 60"/>
   <text class="s" x="700" y="24" text-anchor="end">every call keeps it warm</text>
-  <text class="s" x="140" y="156" text-anchor="middle">also back here after a new build or an environment change</text>
+  <text class="s" x="40" y="156">also back here after a new build or an environment change</text>
 </svg>
 <figcaption>The Overview's dot breathes while awake and goes quiet while asleep; the Usage tab draws the calls by the hour.</figcaption>
 </figure>
@@ -284,8 +285,10 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
   <text class="s mono" x="640" y="98" text-anchor="middle">br-….pg.barua.app</text>
   <text class="s" x="640" y="120" text-anchor="middle">Postgres · yours</text>
   <text class="s" x="640" y="138" text-anchor="middle">~5 ms for four queries</text>
-  <text class="s" x="271" y="82" text-anchor="middle">SQL + params</text>
-  <text class="s" x="271" y="134" text-anchor="middle">rows as JSON</text>
+  <text class="s" x="271" y="80" text-anchor="middle">SQL</text>
+  <text class="s" x="271" y="136" text-anchor="middle">rows</text>
+  <text class="s" x="521" y="80" text-anchor="middle">query</text>
+  <text class="s" x="521" y="136" text-anchor="middle">rows</text>
 </svg>
 <figcaption>Only the database you named is reachable. Each call's line in Activity says how many queries it ran.</figcaption>
 </figure>
@@ -309,7 +312,7 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
   <path class="ln" d="M422 85 L468 85"/>
   <rect class="box keep" x="470" y="20" width="280" height="130" rx="10"/>
   <text class="t g" x="486" y="44">The API tab · one card per operation</text>
-  <text class="mono" x="486" y="68">curl -X POST https://barua.tz/api/fn/… \</text>
+  <text class="mono" x="486" y="68">curl -X POST barua.tz/api/fn/… \</text>
   <text class="mono" x="486" y="86">  -H "Authorization: Bearer barua_…" \</text>
   <text class="mono" x="486" y="104">  --data '{"book":43,…}'</text>
   <text class="s" x="486" y="130">Copy · Try → the answer in its own window</text>

@@ -125,6 +125,7 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
 <aside aria-label="On this page">
   <div class="g">Inside</div>
   <a href="#journey">From a repository to a URL</a>
+  <a href="#repo">What your repository needs</a>
   <a href="#code">What happens to your code</a>
   <a href="#call">A call, step by step</a>
   <a href="#sleep">Awake and asleep</a>
@@ -166,6 +167,94 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
 </svg>
 <figcaption>The whole journey. Press Deploy again and it runs again from the current commit; we never watch or write to the repository.</figcaption>
 </figure>
+
+
+<h2 id="repo">What your repository needs</h2>
+<p>Very little. A program that reads its input on stdin and prints its answer on stdout, with the one file that tells us which language it is. Everything else in the repository is ignored.</p>
+<figure>
+<svg class="draw" viewBox="0 0 760 236" role="img" aria-label="The files a Rust or Go repository needs">
+  <rect class="box" x="10" y="14" width="360" height="208" rx="12"/>
+  <text class="t" x="26" y="38">Rust</text>
+  <text class="mono" x="26" y="62">your-function/</text>
+  <text class="mono" x="26" y="82">├─ Cargo.toml</text><text class="s g" x="200" y="82">required · a [package] that builds a binary</text>
+  <text class="mono" x="26" y="102">├─ src/</text>
+  <text class="mono" x="26" y="122">│  └─ main.rs</text><text class="s g" x="200" y="122">required · reads stdin, prints stdout</text>
+  <text class="mono" x="26" y="142">├─ barua.json</text><text class="s k" x="200" y="142">optional · the API tab's operations</text>
+  <text class="mono" x="26" y="162">├─ Cargo.lock</text><text class="s" x="200" y="162">welcome · pins your dependencies</text>
+  <text class="mono" x="26" y="182">└─ Dockerfile, .env, CI…</text><text class="s" x="200" y="182">ignored</text>
+  <text class="s" x="26" y="210">dependencies must compile for wasm32-wasip1 · a library crate has nothing to run</text>
+  <rect class="box" x="390" y="14" width="360" height="208" rx="12"/>
+  <text class="t" x="406" y="38">Go</text>
+  <text class="mono" x="406" y="62">your-function/</text>
+  <text class="mono" x="406" y="82">├─ go.mod</text><text class="s g" x="580" y="82">required</text>
+  <text class="mono" x="406" y="102">├─ main.go</text><text class="s g" x="580" y="102">required · package main</text>
+  <text class="mono" x="406" y="122">├─ barua.json</text><text class="s k" x="580" y="122">optional · the API tab</text>
+  <text class="mono" x="406" y="142">├─ go.sum</text><text class="s" x="580" y="142">welcome</text>
+  <text class="mono" x="406" y="162">└─ anything else</text><text class="s" x="580" y="162">ignored</text>
+  <text class="s" x="406" y="196">the standard library needs nothing else · no cgo,</text>
+  <text class="s" x="406" y="212">no listening sockets · GOOS=wasip1 must compile</text>
+</svg>
+<figcaption>If the program lives in a sub-folder (a monorepo, or one repository holding several functions), set the Folder field when you deploy; we look for these files there.</figcaption>
+</figure>
+<p class="cap">The smallest working function - Rust</p>
+<pre><code># Cargo.toml
+[package]
+name = "greet"
+version = "0.1.0"
+edition = "2021"
+
+// src/main.rs
+use std::io::{self, Read, Write};
+
+fn main() {
+    let mut input = String::new();
+    io::stdin().read_to_string(&amp;mut input).ok();
+    let name = input.trim();
+    write!(io::stdout(), "{{\"hello\":\"{}\"}}", if name.is_empty() { "world" } else { name }).ok();
+}</code></pre>
+<p class="cap">The same in Go</p>
+<pre><code>// go.mod
+module greet
+
+go 1.22
+
+// main.go
+package main
+
+import ("fmt"; "io"; "os"; "strings")
+
+func main() {
+    in, _ := io.ReadAll(os.Stdin)
+    name := strings.TrimSpace(string(in))
+    if name == "" { name = "world" }
+    fmt.Printf("{\"hello\":%q}", name)
+}</code></pre>
+<p class="cap">barua.json - optional, for the API tab</p>
+<pre><code>{
+  "name": "Greet",
+  "operations": [
+    { "name": "Say hello", "description": "Greets whoever you send.", "body": "Asha" }
+  ]
+}</code></pre>
+<h3>A crate that is also a server</h3>
+<p>One repository can be both: the HTTP server on a real machine, and a function here. Keep the server's dependencies out of the function's build with a target condition, and pick the entry point by target. This is how <a href="https://github.com/nassdaq/pasaka-api">pasaka-api</a> is laid out.</p>
+<pre><code># Cargo.toml
+[dependencies]
+serde_json = "1"                       # compiled everywhere
+
+[target.'cfg(not(target_os = "wasi"))'.dependencies]
+axum = "0.8"                           # only on a real OS
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
+
+// src/main.rs
+#[cfg(target_os = "wasi")]
+fn main() { function::run() }          // stdin → stdout
+
+#[cfg(not(target_os = "wasi"))]
+#[tokio::main]
+async fn main() { server::run().await } // the HTTP server</code></pre>
+<p class="note">Rules of thumb: read all of stdin, print the answer, exit 0 - a non-zero exit is reported to the caller as a failure. Nothing that opens a socket or a file will work inside the function; a database goes through <code>DATABASE_URL</code> and the host.</p>
 
 <h2 id="code">What happens to your code</h2>
 <p>The build runs in a scratch folder that exists only for that build. When it ends, success or failure, the source and every build artifact are deleted. What survives is the module, the compiler's log, the commit hash and the address of the repository.</p>

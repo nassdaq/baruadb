@@ -148,6 +148,7 @@ fn main() {
     greeting := cmp.Or(os.Getenv("GREETING"), "Hello")
     fmt.Printf("{\"message\":\"%s, %s!\"}", greeting, strings.TrimSpace(string(input)))
 }</code></pre>
+<p><strong>What the repository needs.</strong> Rust: a <code>Cargo.toml</code> with a <code>[package]</code> and a <code>src/main.rs</code>. Go: a <code>go.mod</code> and a <code>main.go</code>. Optionally a <code>barua.json</code> so the API tab can list what it does. Nothing else is read - no Dockerfile, no server, no .env. The program reads stdin, prints stdout, exits 0. <a href="/docs/functions/inside/#repo">Drawn, with the smallest working examples →</a></p>
 <p class="note">We tell the language from the repository: a <code>Cargo.toml</code> is Rust, a <code>go.mod</code> is Go. No toolchain on your side, and no <code>.wasm</code> to look at — the build is ours.</p>
 
 <h2 id="url">Your URL</h2>

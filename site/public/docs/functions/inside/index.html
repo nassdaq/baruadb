@@ -131,6 +131,7 @@ figcaption{ color:var(--dim); font-size:13.5px; margin:0 0 26px; }
   <a href="#sleep">Awake and asleep</a>
   <a href="#db">Your database, through the host</a>
   <a href="#api">The API tab</a>
+  <a href="#contract">The contract, exactly</a>
   <a href="#record">What we record</a>
   <a href="#delete">What deleting removes</a>
 </aside>
@@ -409,6 +410,60 @@ async fn main() { server::run().await } // the HTTP server</code></pre>
 </svg>
 <figcaption>Keys are stored hashed and shown once, so the tab lets you paste one, or make one for the function, and fills every example with it.</figcaption>
 </figure>
+
+
+<h2 id="contract">The contract, exactly</h2>
+<p>Three things decide how comfortably you can build a real application here: what the request looks like from inside, how the database is exposed, and how what you print becomes an HTTP response. Here is each, precisely.</p>
+
+<h3>1 · The request, from inside</h3>
+<p><strong>The body is stdin, byte for byte.</strong> No envelope, no JSON wrapping, no re-encoding: the bytes the caller sent are the bytes you read. A <code>GET</code> has an empty stdin. The limit is 256 KB.</p>
+<p><strong>Everything else is in the environment</strong>, set for that call only:</p>
+<table>
+<tr><th>Variable</th><th>Holds</th><th>Example</th></tr>
+<tr><td><code>BARUA_METHOD</code></td><td>the HTTP method</td><td><code>GET</code></td></tr>
+<tr><td><code>BARUA_PATH</code></td><td>the path under the function's URL, <code>/</code> when none</td><td><code>/books/45</code></td></tr>
+<tr><td><code>BARUA_QUERY</code></td><td>the raw query string, no <code>?</code></td><td><code>lang=sw&amp;q=upendo%20wa</code></td></tr>
+<tr><td><code>BARUA_CONTENT_TYPE</code></td><td>the request's content type, or empty</td><td><code>application/json</code></td></tr>
+<tr><td><code>BARUA_HEADERS</code></td><td>the caller's headers as a JSON object, lower-cased; never <code>authorization</code> or <code>cookie</code>; up to 8 KB</td><td><code>{"accept":"application/json"}</code></td></tr>
+<tr><td><code>BARUA_SOURCE</code></td><td>where the call came from</td><td><code>url</code>, <code>console</code>, <code>api</code></td></tr>
+<tr><td><code>BARUA_FUNCTION</code></td><td>the function's id on the runtime</td><td><code>e4be5be8-pasaka</code></td></tr>
+</table>
+<p>In Rust, <code>barua_fn::request()</code> reads them into a struct with <code>segments()</code>, <code>query_param("q")</code> (decoded) and <code>header("accept")</code>. A call from the console, or straight at the runtime, is a <code>POST</code> to <code>/</code> with no headers.</p>
+<pre><code>use barua_fn::request;
+let req = request();
+match (req.method.as_str(), req.segments().as_slice()) {
+    ("GET", ["books", id]) => book(id),
+    ("POST", ["books"])    => create(&amp;body),
+    _                      => not_found(),
+}</code></pre>
+
+<h3>2 · The database, from the SDK</h3>
+<pre><code>pub fn query(sql: &amp;str, params: &amp;[Value]) -&gt; Result&lt;Vec&lt;Row&gt;, Error&gt;   // rows as JSON objects
+pub fn execute(sql: &amp;str, params: &amp;[Value]) -&gt; Result&lt;(), Error&gt;        // for the effect
+pub fn query_one(sql: &amp;str, params: &amp;[Value]) -&gt; Result&lt;Option&lt;Row&gt;, Error&gt;
+pub fn query_as&lt;T: DeserializeOwned&gt;(sql: &amp;str, params: &amp;[Value]) -&gt; Result&lt;Vec&lt;T&gt;, Error&gt;</code></pre>
+<ul>
+<li><strong>Parameters</strong> are <code>$1</code>, <code>$2</code>… bound to the JSON values you pass: <code>json!("Asha")</code>, <code>json!(45)</code>, <code>json!(true)</code>, <code>Value::Null</code>.</li>
+<li><strong>Rows</strong> come back as JSON objects keyed by column. Numbers, text, booleans and null are themselves; <code>timestamptz</code> is an ISO string; <code>int8</code> is a string (JSON cannot hold it); <code>bytea</code> is base64; <code>jsonb</code> is the JSON itself.</li>
+<li><strong>Any statement</strong> works: <code>SELECT</code>, <code>INSERT … RETURNING</code>, DDL. Several statements in one string are fine when there are no parameters.</li>
+<li><strong>A transaction is one string</strong>: <code>"begin; …; commit;"</code>. If a statement inside fails, the whole thing is rolled back and you get the error; a <code>begin</code> without its <code>commit</code> is rolled back too. Calls have no connection affinity, so a transaction cannot span two calls.</li>
+<li><strong>Errors</strong> are <code>Error(String)</code> with Postgres's own message: <code>duplicate key value violates unique constraint "users_email_key"</code>. Match on the text if you need to.</li>
+<li><strong>Limits</strong>: 4 seconds per statement, 4 MB per answer. The host keeps a pool of four connections per <code>DATABASE_URL</code>, warm across calls.</li>
+<li><strong>Natively</strong> (a <code>cargo run</code> of the same crate) every call returns <code>Error</code>, so the server build keeps its own client.</li>
+</ul>
+
+<h3>3 · From what you print to an HTTP response</h3>
+<table>
+<tr><th>Your function</th><th>The caller gets</th></tr>
+<tr><td>exits 0, printed something</td><td><strong>200</strong>, the body exactly as printed. Content type <code>application/json</code> if it starts with <code>{</code> or <code>[</code>, else <code>text/plain</code>.</td></tr>
+<tr><td>exits 0, printed nothing</td><td><strong>200</strong> with an empty body</td></tr>
+<tr><td>called <code>status(404)</code>, printed something</td><td><strong>404</strong> with your body, and the same for any status 100–599. The run counts as successful; it is your answer.</td></tr>
+<tr><td>called <code>header("content-type", "text/csv")</code></td><td>that content type. Also allowed: <code>cache-control</code>, <code>location</code>, <code>content-disposition</code>, <code>content-language</code>, <code>etag</code>, <code>vary</code>, any <code>x-…</code>. Up to 16.</td></tr>
+<tr><td>exits non-zero (a Rust panic exits 101)</td><td><strong>500</strong>, <code>{"error":{"code":"function_failed","message":&lt;stderr&gt;,"exit":101}}</code>. What you printed is discarded; what you wrote to stderr is the message.</td></tr>
+<tr><td>runs past 5 seconds</td><td><strong>504</strong>, <code>{"error":{"code":"timeout"}}</code>; the instance is replaced</td></tr>
+</table>
+<p>Every answer carries <code>x-fn-ms</code> (how long the run took), <code>x-fn-exit</code> and <code>x-fn-cold</code> (<code>1</code> when this call woke the function). Before your code runs, the URL itself can answer <strong>401</strong> <code>invalid_key</code>, <strong>404</strong> <code>function_not_found</code>, <strong>409</strong> <code>function_not_ready</code> (still building, or the last build failed), <strong>413</strong> <code>input_too_large</code>, or <strong>429</strong> <code>rate_limited</code> (600 calls a minute per key).</p>
+<p class="note">The rule that follows from this: an application error is <em>your</em> answer, so exit 0 and say it - <code>status(404)</code> and a JSON body, or <code>{"success":false,"error":"…"}</code> at 200 if you prefer one shape. Exit non-zero only when the function itself is broken; that is what turns into a 500. A worked example of all of it lives in <a href="https://github.com/nassdaq/hello-barua-fn/tree/main/echo">hello-barua-fn/echo</a>.</p>
 
 <h2 id="record">What we record</h2>
 <p>Enough to run the thing and show you what it did, and no more.</p>

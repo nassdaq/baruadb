@@ -155,8 +155,8 @@ fn main() {
 <pre><code>curl -X POST https://fn.barua.app/hello-barua-fn --data '{"name": "Asha"}'
 # {"message":"Hello, Asha!","lang":"rust","greeting_from_env":false}</code></pre>
 <ul>
-<li><strong>POST</strong> the input as the body. A <strong>GET</strong> with no body runs the function with empty input.</li>
-<li>If your function prints JSON the response is <code>application/json</code>; otherwise plain text.</li>
+<li><strong>Any method, any path under the URL</strong>: the body is the input; a <strong>GET</strong> has empty input. The function sees the method, the path, the query and your headers.</li>
+<li>If your function prints JSON the response is <code>application/json</code>; otherwise plain text. It can choose its own status and headers (<code>barua_fn::status</code>, <code>barua_fn::header</code>), and it sees the method, path, query and headers of the request (<code>barua_fn::request()</code>). <a href="/docs/functions/inside/#contract">The contract, exactly →</a></li>
 <li><code>x-fn-ms</code> on the response is how long the run took; <code>x-fn-exit</code> is the exit code.</li>
 <li>Browsers can call it directly — the URL answers cross-origin requests.</li>
 <li>Every call is a fresh sandbox: fresh memory, nothing carried over from the last call or from anyone else's.</li>
